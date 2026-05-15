@@ -10,6 +10,7 @@ from models import Producto
 from database import get_session
 from datetime import datetime
 
+
 class InventoryView(QWidget):
 
     def __init__(self, engine):
@@ -21,84 +22,35 @@ class InventoryView(QWidget):
 
     def _construir_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(30, 30, 30, 30)
-        layout.setSpacing(15)
+        layout.setContentsMargins(32, 28, 32, 28)
+        layout.setSpacing(16)
 
-        # Título
-        titulo = QLabel("📦  Inventario de Productos")
-        titulo.setStyleSheet("""
-            font-size: 22px;
-            font-weight: bold;
-            color: #1E40AF;
-        """)
+        titulo = QLabel("Inventario de Productos")
+        titulo.setStyleSheet("font-size: 20px; font-weight: 700; color: #111827;")
         layout.addWidget(titulo)
 
-        # ── Botones superiores ─────────────────────────────────────────────
+        # Botones superiores
         btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(10)
+        btn_layout.setSpacing(8)
 
-        btn_agregar = QPushButton("➕  Agregar")
-        btn_agregar.setFixedHeight(38)
-        btn_agregar.setStyleSheet("""
-            QPushButton {
-                background-color: #2563EB;
-                color: white;
-                padding: 0px 18px;
-                border-radius: 7px;
-                font-size: 13px;
-                font-weight: bold;
-                border: none;
-            }
-            QPushButton:hover { background-color: #1D4ED8; }
-        """)
+        btn_agregar = QPushButton("Agregar")
+        btn_agregar.setFixedHeight(36)
+        btn_agregar.setStyleSheet(self._estilo_btn_primario())
         btn_agregar.clicked.connect(self._abrir_formulario)
 
-        btn_refrescar = QPushButton("🔄  Refrescar")
-        btn_refrescar.setFixedHeight(38)
-        btn_refrescar.setStyleSheet("""
-            QPushButton {
-                background-color: #FFFFFF;
-                color: #374151;
-                padding: 0px 18px;
-                border-radius: 7px;
-                font-size: 13px;
-                font-weight: bold;
-                border: 1px solid #D1D5DB;
-            }
-            QPushButton:hover { background-color: #F9FAFB; }
-        """)
+        btn_refrescar = QPushButton("Actualizar")
+        btn_refrescar.setFixedHeight(36)
+        btn_refrescar.setStyleSheet(self._estilo_btn_secundario())
         btn_refrescar.clicked.connect(self.cargar_productos)
 
-        btn_excel = QPushButton("📊  Excel")
-        btn_excel.setFixedHeight(38)
-        btn_excel.setStyleSheet("""
-            QPushButton {
-                background-color: #FFFFFF;
-                color: #166534;
-                padding: 0px 18px;
-                border-radius: 7px;
-                font-size: 13px;
-                font-weight: bold;
-                border: 1px solid #BBF7D0;
-            }
-            QPushButton:hover { background-color: #F0FDF4; }
-        """)
+        btn_excel = QPushButton("Exportar Excel")
+        btn_excel.setFixedHeight(36)
+        btn_excel.setStyleSheet(self._estilo_btn_verde())
         btn_excel.clicked.connect(self._exportar_excel)
 
-        btn_pdf = QPushButton("📄  PDF")
-        btn_pdf.setFixedHeight(38)
-        btn_pdf.setStyleSheet("""
-            QPushButton {
-                background-color: #FFFFFF;
-                color: #991B1B;
-                padding: 0px 18px;
-                border-radius: 7px;
-                font-size: 13px;
-                font-weight: bold;
-                border: 1px solid #FECACA;
-            }
-            QPushButton:hover { background-color: #FFF5F5; }
-        """)
+        btn_pdf = QPushButton("Exportar PDF")
+        btn_pdf.setFixedHeight(36)
+        btn_pdf.setStyleSheet(self._estilo_btn_secundario())
         btn_pdf.clicked.connect(self._exportar_pdf)
 
         btn_layout.addWidget(btn_agregar)
@@ -108,7 +60,7 @@ class InventoryView(QWidget):
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
 
-        # ── Tabla ──────────────────────────────────────────────────────────
+        # Tabla
         self.tabla = QTableWidget()
         self.tabla.setColumnCount(8)
         self.tabla.setHorizontalHeaderLabels([
@@ -125,10 +77,9 @@ class InventoryView(QWidget):
             QTableWidget {
                 background-color: #FFFFFF;
                 color: #111827;
-                border-radius: 10px;
+                border-radius: 8px;
                 border: 1px solid #E5E7EB;
                 font-size: 13px;
-                gridline-color: #F3F4F6;
             }
             QTableWidget::item {
                 padding: 10px 8px;
@@ -147,47 +98,25 @@ class InventoryView(QWidget):
                 color: #6B7280;
                 padding: 10px 8px;
                 font-size: 12px;
-                font-weight: bold;
+                font-weight: 600;
                 border: none;
-                border-bottom: 2px solid #E5E7EB;
+                border-bottom: 1px solid #E5E7EB;
             }
         """)
         layout.addWidget(self.tabla)
 
-        # ── Botones inferiores ─────────────────────────────────────────────
+        # Botones inferiores
         btn_layout2 = QHBoxLayout()
-        btn_layout2.setSpacing(10)
+        btn_layout2.setSpacing(8)
 
-        btn_editar = QPushButton("✏️  Editar")
-        btn_editar.setFixedHeight(38)
-        btn_editar.setStyleSheet("""
-            QPushButton {
-                background-color: #FFFFFF;
-                color: #92400E;
-                padding: 0px 18px;
-                border-radius: 7px;
-                font-size: 13px;
-                font-weight: bold;
-                border: 1px solid #FDE68A;
-            }
-            QPushButton:hover { background-color: #FFFBEB; }
-        """)
+        btn_editar = QPushButton("Editar")
+        btn_editar.setFixedHeight(36)
+        btn_editar.setStyleSheet(self._estilo_btn_secundario())
         btn_editar.clicked.connect(self._editar_producto)
 
-        btn_eliminar = QPushButton("🗑️  Eliminar")
-        btn_eliminar.setFixedHeight(38)
-        btn_eliminar.setStyleSheet("""
-            QPushButton {
-                background-color: #FFFFFF;
-                color: #991B1B;
-                padding: 0px 18px;
-                border-radius: 7px;
-                font-size: 13px;
-                font-weight: bold;
-                border: 1px solid #FECACA;
-            }
-            QPushButton:hover { background-color: #FEF2F2; }
-        """)
+        btn_eliminar = QPushButton("Eliminar")
+        btn_eliminar.setFixedHeight(36)
+        btn_eliminar.setStyleSheet(self._estilo_btn_peligro())
         btn_eliminar.clicked.connect(self._eliminar_producto)
 
         btn_layout2.addWidget(btn_editar)
@@ -195,16 +124,15 @@ class InventoryView(QWidget):
         btn_layout2.addStretch()
         layout.addLayout(btn_layout2)
 
-    # ── Cargar productos ───────────────────────────────────────────────────
     def cargar_productos(self):
         self.session.expire_all()
         productos = self.session.query(Producto).filter(Producto.activo == 1).all()
         self.tabla.setRowCount(len(productos))
 
         badges = {
-            "critico": ("Crítico", "#991B1B", "#FECACA"),
-            "alto":    ("Alto",    "#9A3412", "#FED7AA"),
-            "medio":   ("Medio",   "#854D0E", "#FEF08A"),
+            "critico": ("Crítico", "#991B1B", "#FEE2E2"),
+            "alto":    ("Alto",    "#9A3412", "#FEF3C7"),
+            "medio":   ("Medio",   "#854D0E", "#FEF9C3"),
             "normal":  ("Normal",  "#166534", "#DCFCE7"),
         }
 
@@ -232,9 +160,6 @@ class InventoryView(QWidget):
                     item.setText(etiqueta)
                 self.tabla.setItem(fila, col, item)
 
-        self.tabla.setRowHeight(0, 42)
-
-    # ── Abrir formulario ───────────────────────────────────────────────────
     def _abrir_formulario(self, producto=None):
         dialogo = ProductoDialog(producto, self)
         if dialogo.exec() == QDialog.DialogCode.Accepted:
@@ -251,7 +176,6 @@ class InventoryView(QWidget):
             self.session.commit()
             self.cargar_productos()
 
-    # ── Editar ─────────────────────────────────────────────────────────────
     def _editar_producto(self):
         fila = self.tabla.currentRow()
         if fila < 0:
@@ -261,7 +185,6 @@ class InventoryView(QWidget):
         producto    = self.session.get(Producto, producto_id)
         self._abrir_formulario(producto)
 
-    # ── Eliminar ───────────────────────────────────────────────────────────
     def _eliminar_producto(self):
         fila = self.tabla.currentRow()
         if fila < 0:
@@ -279,11 +202,10 @@ class InventoryView(QWidget):
             self.session.commit()
             self.cargar_productos()
 
-    # ── Exportar Excel ─────────────────────────────────────────────────────
     def _exportar_excel(self):
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Alignment
-        from config import REPORTS_DIR, CONFIG
+        from config import REPORTS_DIR
 
         productos = self.session.query(Producto).filter(Producto.activo == 1).all()
         wb = Workbook()
@@ -299,9 +221,9 @@ class InventoryView(QWidget):
             celda.alignment = Alignment(horizontal="center")
 
         colores = {
-            "critico": "FECACA",
-            "alto":    "FED7AA",
-            "medio":   "FEF08A",
+            "critico": "FEE2E2",
+            "alto":    "FEF3C7",
+            "medio":   "FEF9C3",
             "normal":  "DCFCE7",
         }
 
@@ -321,9 +243,8 @@ class InventoryView(QWidget):
 
         ruta = REPORTS_DIR / f"inventario_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         wb.save(ruta)
-        QMessageBox.information(self, "✅ Exportado", f"Excel guardado en:\n{ruta}")
+        QMessageBox.information(self, "Exportado", f"Excel guardado en:\n{ruta}")
 
-    # ── Exportar PDF ───────────────────────────────────────────────────────
     def _exportar_pdf(self):
         from reportlab.lib.pagesizes import letter, landscape
         from reportlab.lib import colors
@@ -353,9 +274,9 @@ class InventoryView(QWidget):
                   "Stock", "Stock Máx.", "Vencimiento", "Riesgo"]]
 
         colores_pdf = {
-            "critico": colors.HexColor("#FECACA"),
-            "alto":    colors.HexColor("#FED7AA"),
-            "medio":   colors.HexColor("#FEF08A"),
+            "critico": colors.HexColor("#FEE2E2"),
+            "alto":    colors.HexColor("#FEF3C7"),
+            "medio":   colors.HexColor("#FEF9C3"),
             "normal":  colors.white,
         }
 
@@ -388,36 +309,74 @@ class InventoryView(QWidget):
         elementos.append(tabla)
         doc.build(elementos)
 
-        QMessageBox.information(self, "✅ Exportado", f"PDF guardado en:\n{ruta}")
+        QMessageBox.information(self, "Exportado", f"PDF guardado en:\n{ruta}")
+
+    # ── Helpers estilos botones ───────────────────────────────────────────
+    def _estilo_btn_primario(self):
+        return """
+            QPushButton {
+                background-color: #2563EB; color: white;
+                padding: 0px 16px; border-radius: 6px;
+                font-size: 13px; font-weight: 600; border: none;
+            }
+            QPushButton:hover { background-color: #1D4ED8; }
+        """
+
+    def _estilo_btn_secundario(self):
+        return """
+            QPushButton {
+                background-color: #FFFFFF; color: #374151;
+                padding: 0px 16px; border-radius: 6px;
+                font-size: 13px; font-weight: 600;
+                border: 1px solid #D1D5DB;
+            }
+            QPushButton:hover { background-color: #F9FAFB; }
+        """
+
+    def _estilo_btn_verde(self):
+        return """
+            QPushButton {
+                background-color: #FFFFFF; color: #166534;
+                padding: 0px 16px; border-radius: 6px;
+                font-size: 13px; font-weight: 600;
+                border: 1px solid #BBF7D0;
+            }
+            QPushButton:hover { background-color: #F0FDF4; }
+        """
+
+    def _estilo_btn_peligro(self):
+        return """
+            QPushButton {
+                background-color: #FFFFFF; color: #DC2626;
+                padding: 0px 16px; border-radius: 6px;
+                font-size: 13px; font-weight: 600;
+                border: 1px solid #FECACA;
+            }
+            QPushButton:hover { background-color: #FEF2F2; }
+        """
 
 
-# ── Diálogo agregar / editar ───────────────────────────────────────────────
+# ── Diálogo agregar / editar ──────────────────────────────────────────────
 class ProductoDialog(QDialog):
 
     def __init__(self, producto=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Agregar Producto" if not producto else "Editar Producto")
-        self.setMinimumWidth(420)
+        self.setMinimumWidth(400)
         self._construir_ui(producto)
         self.setStyleSheet("""
-            QDialog {
-                background-color: #FFFFFF;
-            }
-            QLabel {
-                color: #374151;
-                font-size: 13px;
-                font-weight: bold;
-            }
+            QDialog { background-color: #FFFFFF; }
+            QLabel { color: #374151; font-size: 12px; font-weight: 600; }
             QLineEdit, QDateEdit {
                 background-color: #F9FAFB;
                 color: #111827;
                 border: 1px solid #D1D5DB;
-                border-radius: 7px;
-                padding: 8px 12px;
+                border-radius: 6px;
+                padding: 7px 10px;
                 font-size: 13px;
             }
             QLineEdit:focus, QDateEdit:focus {
-                border: 1.5px solid #3B82F6;
+                border: 1.5px solid #2563EB;
                 background-color: #FFFFFF;
             }
         """)
@@ -425,7 +384,7 @@ class ProductoDialog(QDialog):
     def _construir_ui(self, producto):
         layout = QFormLayout(self)
         layout.setSpacing(12)
-        layout.setContentsMargins(25, 25, 25, 25)
+        layout.setContentsMargins(24, 24, 24, 24)
 
         self.nombre    = QLineEdit(producto.nombre    if producto else "")
         self.categoria = QLineEdit(producto.categoria if producto else "")
@@ -449,31 +408,25 @@ class ProductoDialog(QDialog):
         layout.addRow("Vencimiento:",  self.vencimiento)
 
         btn_layout   = QHBoxLayout()
-        btn_guardar  = QPushButton("💾  Guardar")
+        btn_guardar  = QPushButton("Guardar")
         btn_cancelar = QPushButton("Cancelar")
-        btn_guardar.setFixedHeight(40)
-        btn_cancelar.setFixedHeight(40)
+        btn_guardar.setFixedHeight(38)
+        btn_cancelar.setFixedHeight(38)
         btn_guardar.clicked.connect(self.accept)
         btn_cancelar.clicked.connect(self.reject)
         btn_guardar.setStyleSheet("""
             QPushButton {
-                background-color: #2563EB;
-                color: white;
-                padding: 0px 20px;
-                border-radius: 7px;
-                font-weight: bold;
-                border: none;
+                background-color: #2563EB; color: white;
+                padding: 0px 20px; border-radius: 6px;
+                font-weight: 600; border: none;
             }
             QPushButton:hover { background-color: #1D4ED8; }
         """)
         btn_cancelar.setStyleSheet("""
             QPushButton {
-                background-color: #FFFFFF;
-                color: #6B7280;
-                padding: 0px 20px;
-                border-radius: 7px;
-                font-weight: bold;
-                border: 1px solid #D1D5DB;
+                background-color: #FFFFFF; color: #6B7280;
+                padding: 0px 20px; border-radius: 6px;
+                font-weight: 600; border: 1px solid #D1D5DB;
             }
             QPushButton:hover { background-color: #F9FAFB; }
         """)

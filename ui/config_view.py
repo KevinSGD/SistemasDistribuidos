@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from config import CONFIG
 
+
 class ConfigView(QWidget):
 
     def __init__(self):
@@ -15,15 +16,11 @@ class ConfigView(QWidget):
 
     def _construir_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(30, 30, 30, 30)
+        layout.setContentsMargins(32, 28, 32, 28)
         layout.setSpacing(20)
 
-        titulo = QLabel("⚙️  Configuración del Sistema")
-        titulo.setStyleSheet("""
-            font-size: 22px;
-            font-weight: bold;
-            color: #1E40AF;
-        """)
+        titulo = QLabel("Configuración")
+        titulo.setStyleSheet("font-size: 20px; font-weight: 700; color: #111827;")
         layout.addWidget(titulo)
 
         scroll = QScrollArea()
@@ -43,15 +40,15 @@ class ConfigView(QWidget):
         scroll.setWidget(contenedor)
         layout.addWidget(scroll)
 
-        btn_guardar = QPushButton("💾   Guardar Configuración")
-        btn_guardar.setFixedHeight(44)
+        btn_guardar = QPushButton("Guardar configuración")
+        btn_guardar.setFixedHeight(42)
         btn_guardar.setStyleSheet("""
             QPushButton {
                 background-color: #2563EB;
                 color: white;
-                font-size: 14px;
-                font-weight: bold;
-                border-radius: 8px;
+                font-size: 13px;
+                font-weight: 600;
+                border-radius: 6px;
                 border: none;
             }
             QPushButton:hover { background-color: #1D4ED8; }
@@ -60,7 +57,7 @@ class ConfigView(QWidget):
         layout.addWidget(btn_guardar)
 
     def _seccion_negocio(self) -> QGroupBox:
-        grupo = self._grupo("🏪  Datos del Negocio")
+        grupo = self._grupo("Datos del Negocio")
         form  = QFormLayout()
         form.setSpacing(12)
 
@@ -78,7 +75,7 @@ class ConfigView(QWidget):
         return grupo
 
     def _seccion_descuentos(self) -> QGroupBox:
-        grupo = self._grupo("🏷️  Reglas de Descuento")
+        grupo = self._grupo("Reglas de Descuento")
         form  = QFormLayout()
         form.setSpacing(12)
 
@@ -95,7 +92,7 @@ class ConfigView(QWidget):
         return grupo
 
     def _seccion_umbrales(self) -> QGroupBox:
-        grupo = self._grupo("⚠️  Umbrales de Alerta")
+        grupo = self._grupo("Umbrales de Alerta")
         form  = QFormLayout()
         form.setSpacing(12)
 
@@ -112,13 +109,12 @@ class ConfigView(QWidget):
         return grupo
 
     def _seccion_automatizacion(self) -> QGroupBox:
-        grupo = self._grupo("🤖  Automatización")
+        grupo = self._grupo("Automatización")
         form  = QFormLayout()
         form.setSpacing(12)
 
         self.intervalo = self._spin(60)
         self.intervalo.setRange(1, 1440)
-
         self.notificaciones = self._combo(["Activado", "Desactivado"], "Activado")
         self.sonido         = self._combo(["Activado", "Desactivado"], "Activado")
 
@@ -141,23 +137,19 @@ class ConfigView(QWidget):
         CONFIG["dias_critico_vencimiento"] = self.dias_critico.value()
         CONFIG["umbral_stock_bajo"]        = self.stock_bajo.value()
 
-        QMessageBox.information(
-            self, "Guardado",
-            "✅ Configuración guardada correctamente."
-        )
+        QMessageBox.information(self, "Guardado", "Configuración guardada correctamente.")
 
-    # ── Helpers ────────────────────────────────────────────────────────────
     def _grupo(self, titulo: str) -> QGroupBox:
         grupo = QGroupBox(titulo)
         grupo.setStyleSheet("""
             QGroupBox {
-                color: #1E40AF;
-                font-size: 13px;
-                font-weight: bold;
+                color: #374151;
+                font-size: 12px;
+                font-weight: 700;
                 border: 1px solid #E5E7EB;
-                border-radius: 10px;
+                border-radius: 8px;
                 margin-top: 10px;
-                padding: 15px;
+                padding: 14px;
                 background-color: #FFFFFF;
             }
             QGroupBox::title {
@@ -166,7 +158,7 @@ class ConfigView(QWidget):
                 padding: 0 5px;
                 background-color: #FFFFFF;
             }
-            QLabel { color: #374151; font-size: 13px; }
+            QLabel { color: #374151; font-size: 12px; }
         """)
         return grupo
 
@@ -181,7 +173,7 @@ class ConfigView(QWidget):
                 padding: 7px 10px;
                 font-size: 13px;
             }
-            QLineEdit:focus { border: 1px solid #3B82F6; }
+            QLineEdit:focus { border: 1px solid #2563EB; }
         """)
         return w
 
@@ -198,7 +190,7 @@ class ConfigView(QWidget):
                 padding: 6px;
                 font-size: 13px;
             }
-            QSpinBox:focus { border: 1px solid #3B82F6; }
+            QSpinBox:focus { border: 1px solid #2563EB; }
         """)
         return w
 

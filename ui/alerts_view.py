@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
+
 class AlertsView(QWidget):
 
     def __init__(self, engine):
@@ -13,15 +14,11 @@ class AlertsView(QWidget):
 
     def _construir_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(30, 30, 30, 30)
-        layout.setSpacing(15)
+        layout.setContentsMargins(32, 28, 32, 28)
+        layout.setSpacing(16)
 
-        titulo = QLabel("🚨  Alertas de Inventario")
-        titulo.setStyleSheet("""
-            font-size: 22px;
-            font-weight: bold;
-            color: #DC2626;
-        """)
+        titulo = QLabel("Alertas de Inventario")
+        titulo.setStyleSheet("font-size: 20px; font-weight: 700; color: #111827;")
         layout.addWidget(titulo)
 
         scroll = QScrollArea()
@@ -41,9 +38,9 @@ class AlertsView(QWidget):
                 item.widget().deleteLater()
 
         niveles = {
-            "critico": ("🔴  CRÍTICO",  "#DC2626", "#FEF2F2"),
-            "alto":    ("🟠  ALTO",     "#D97706", "#FFFBEB"),
-            "medio":   ("🟡  MEDIO",    "#CA8A04", "#FEFCE8"),
+            "critico": ("Crítico",  "#DC2626", "#FEE2E2"),
+            "alto":    ("Alto",     "#D97706", "#FEF3C7"),
+            "medio":   ("Medio",    "#CA8A04", "#FEF9C3"),
         }
 
         hay_alertas = False
@@ -54,12 +51,13 @@ class AlertsView(QWidget):
 
             hay_alertas = True
 
-            encabezado = QLabel(f"{etiqueta}  —  {len(items)} producto(s)")
+            encabezado = QLabel(f"{etiqueta.upper()}  —  {len(items)} producto(s)")
             encabezado.setStyleSheet(f"""
                 color: {color};
-                font-size: 13px;
-                font-weight: bold;
-                padding: 6px 0px;
+                font-size: 12px;
+                font-weight: 700;
+                padding: 4px 0px;
+                letter-spacing: 0.5px;
             """)
             self.contenedor_layout.addWidget(encabezado)
 
@@ -69,14 +67,15 @@ class AlertsView(QWidget):
                 )
 
         if not hay_alertas:
-            lbl = QLabel("✅  No hay alertas activas. ¡Todo el inventario está en orden!")
+            lbl = QLabel("Sin alertas activas. El inventario está en orden.")
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lbl.setStyleSheet("""
                 color: #16A34A;
-                font-size: 14px;
-                padding: 40px;
+                font-size: 13px;
+                padding: 36px;
                 background-color: #F0FDF4;
                 border-radius: 8px;
+                border: 1px solid #BBF7D0;
             """)
             self.contenedor_layout.addWidget(lbl)
 
@@ -87,40 +86,38 @@ class AlertsView(QWidget):
         tarjeta.setStyleSheet(f"""
             QFrame {{
                 background-color: {fondo};
-                border-radius: 8px;
-                border-left: 4px solid {color};
+                border-radius: 6px;
                 border: 1px solid #E5E7EB;
-                border-left: 4px solid {color};
+                border-left: 3px solid {color};
             }}
         """)
         layout = QHBoxLayout(tarjeta)
-        layout.setContentsMargins(15, 12, 15, 12)
-        layout.setSpacing(15)
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(16)
 
-        # Izquierda
         info = QVBoxLayout()
-        nombre = QLabel(f"<b style='font-size:14px; color:#111827;'>{item['nombre']}</b>")
-        motivo = QLabel(f"📋  {item['motivo']}")
+        info.setSpacing(3)
+        nombre = QLabel(f"<b style='font-size:13px; color:#111827;'>{item['nombre']}</b>")
+        motivo = QLabel(item['motivo'])
         motivo.setStyleSheet("color: #6B7280; font-size: 12px;")
-        stock  = QLabel(f"📦  Stock: {item['stock']} unidades")
+        stock  = QLabel(f"Stock: {item['stock']} unidades")
         stock.setStyleSheet("color: #6B7280; font-size: 12px;")
-
         info.addWidget(nombre)
         info.addWidget(motivo)
         info.addWidget(stock)
 
-        # Derecha
         precios = QVBoxLayout()
         precios.setAlignment(Qt.AlignmentFlag.AlignRight)
+        precios.setSpacing(4)
 
         badge = QLabel(f"-{item['descuento_sugerido']}% OFF")
         badge.setStyleSheet(f"""
             color: white;
             background-color: {color};
-            font-weight: bold;
-            font-size: 13px;
-            padding: 4px 12px;
-            border-radius: 12px;
+            font-weight: 700;
+            font-size: 12px;
+            padding: 3px 10px;
+            border-radius: 4px;
         """)
         badge.setAlignment(Qt.AlignmentFlag.AlignRight)
 
@@ -129,7 +126,7 @@ class AlertsView(QWidget):
         precio_orig.setAlignment(Qt.AlignmentFlag.AlignRight)
 
         precio_nuevo = QLabel(f"Ahora: ${item['precio_sugerido']:,.0f}")
-        precio_nuevo.setStyleSheet("color: #16A34A; font-weight: bold; font-size: 13px;")
+        precio_nuevo.setStyleSheet("color: #16A34A; font-weight: 700; font-size: 13px;")
         precio_nuevo.setAlignment(Qt.AlignmentFlag.AlignRight)
 
         precios.addWidget(badge)

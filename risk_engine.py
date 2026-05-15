@@ -94,6 +94,7 @@ class RiskEngine:
         return {
             "producto_id"        : producto.id,
             "nombre"             : producto.nombre,
+            "categoria"          : producto.categoria,
             "nivel_riesgo"       : nivel_final,
             "motivo"             : motivo_final,
             "descuento_sugerido" : descuento_final,
@@ -103,11 +104,38 @@ class RiskEngine:
             "stock"              : producto.stock,
         }
 
-    # ── 5. Escanear todos los productos ────────────────────────────────────
+    # ── 5. Eliminar productos vencidos ─────────────────────────────────────
+    def eliminar_vencidos(self) -> list[str]:
+        """
+        Desactiva (soft-delete) todos los productos cuya fecha de
+        vencimiento ya pasó. Retorna la lista de nombres eliminados.
+        """
+        ahora    = datetime.now()
+        vencidos = self.session.query(Producto).filter(
+            Producto.activo            == 1,
+            Producto.fecha_vencimiento != None,
+            Producto.fecha_vencimiento <= ahora
+        ).all()
+
+        nombres = []
+        for p in vencidos:
+            p.activo = 0
+            nombres.append(p.nombre)
+
+        if nombres:
+            self.session.commit()
+
+        return nombres
+
+    # ── 6. Escanear todos los productos ────────────────────────────────────
     def escanear_inventario(self) -> dict:
         """
-        Evalúa todos los productos activos y los agrupa por nivel de riesgo.
+        Primero elimina vencidos, luego evalúa los productos activos y los
+        agrupa por nivel de riesgo. Los nombres eliminados quedan en
+        self.ultimos_eliminados para que la UI pueda notificarlos.
         """
+        self.ultimos_eliminados = self.eliminar_vencidos()
+
         productos = self.session.query(Producto).filter(Producto.activo == 1).all()
 
         resultados = {
@@ -127,7 +155,7 @@ class RiskEngine:
         self.session.commit()
         return resultados
 
-    # ── 6. Aplicar descuentos automáticamente ──────────────────────────────
+    # ── 7. Aplicar descuentos automáticamente ──────────────────────────────
     def aplicar_descuentos(self, resultados: dict) -> int:
         """
         Crea registros de descuento en la BD para productos en riesgo.
