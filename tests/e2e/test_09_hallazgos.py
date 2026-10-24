@@ -1,8 +1,8 @@
-"""Hallazgos del E2E: cada bug de producto tiene aqui un test que lo reproduce (xfail con la razon) y
-mediciones del entorno. No se corrige nada de client/ ni server/."""
+"""Hallazgos del E2E (ya corregidos: H-2 JWT en logs, H-3 localhost lento) y mediciones del entorno."""
 import socket
 import statistics
 import time
+from urllib.parse import urlsplit
 
 import httpx
 import pytest
@@ -28,14 +28,13 @@ def _conexion_nueva(url: str, n: int = 4) -> list[float]:
     return out
 
 
-@pytest.mark.xfail(strict=False, reason=(
-    "HALLAZGO de despliegue (client/infrastructure/config.py: URL_POR_DEFECTO='http://localhost:8000' y "
-    "deploy/windows/*.ps1 usan 'localhost'): en Windows 11 + WSL2 cada CONEXION NUEVA a 'localhost' tarda "
-    "~2,2 s (Windows intenta IPv6 ::1 antes de 127.0.0.1) frente a ~0,2 s con 127.0.0.1. El login (conexion "
-    "nueva) y cada reconexion del WebSocket pagan ese retraso. Mitigacion: usar 127.0.0.1 como URL por defecto."))
-def test_conexion_nueva_a_localhost_deberia_tardar_menos_de_1s(servidor):
+def test_conexion_nueva_con_la_url_por_defecto_tarda_menos_de_1s(servidor):
+    """H-3 resuelto: el cliente usa 127.0.0.1 por defecto (localhost cuesta ~2,2 s por conexion en WSL2)."""
+    from client.infrastructure.config import URL_POR_DEFECTO
+    assert urlsplit(URL_POR_DEFECTO).hostname == "127.0.0.1"
+    por_defecto = f"{URL_POR_DEFECTO.rsplit(':', 1)[0]}:{servidor.puerto}"
     lh = _conexion_nueva(servidor.url_localhost)
-    ip = _conexion_nueva(servidor.url)
+    ip = _conexion_nueva(por_defecto)
     try:
         t = time.perf_counter()
         socket.create_connection(("::1", servidor.puerto), timeout=5).close()
@@ -45,14 +44,9 @@ def test_conexion_nueva_a_localhost_deberia_tardar_menos_de_1s(servidor):
     print(f"\n[9a] conexion nueva: localhost mediana {statistics.median(lh) * 1000:.0f} ms "
           f"(max {max(lh) * 1000:.0f}); 127.0.0.1 mediana {statistics.median(ip) * 1000:.0f} ms "
           f"(max {max(ip) * 1000:.0f}); ::1 {v6}")
-    assert statistics.median(lh) < 1.0
+    assert statistics.median(ip) < 1.0
 
 
-@pytest.mark.xfail(strict=False, reason=(
-    "BUG de seguridad (servidor/uvicorn): el WebSocket recibe el JWT en la query string (/ws?token=...) y "
-    "uvicorn registra la URL completa en el log (logging.access 'WebSocket /ws?token=eyJ...'). Cualquiera con "
-    "acceso de lectura a servidor.log/stdout.log puede reutilizar el token mientras la sesion este viva. "
-    "Mitigacion: filtrar la query en el log o autenticar el WS con un primer mensaje / subprotocolo."))
 def test_el_jwt_no_debe_aparecer_en_los_logs_del_servidor(servidor, api_comprador):
     with wsc.connect(f"ws://127.0.0.1:{servidor.puerto}/ws?token={api_comprador.token}"):
         time.sleep(0.5)

@@ -101,15 +101,12 @@ def test_admin_desactiva_al_comprador_y_su_sesion_cae_con_el_motivo(servidor, cr
           f"motivo={e.value.detalle.get('motivo')}; relogin -> {e2.value.http} {e2.value.codigo}")
 
 
-@pytest.mark.xfail(strict=False, reason=(
-    "BUG servidor (server/application/inventario_service.py, InventarioService.editar): solo publica "
-    "stock_actualizado si cambian stock o activo. Editar precio_base, fecha_vencimiento, nombre, categoria "
-    "o stock_maximo NO emite ningun evento WS, y el sondeo de respaldo del cliente solo corre con el "
-    "socket caido: el comprador conectado ve datos obsoletos hasta el siguiente evento no relacionado."))
-def test_bug_editar_precio_o_vencimiento_no_notifica_por_ws(servidor, crear_app, api_admin, espera):
+def test_editar_precio_notifica_por_ws(servidor, crear_app, api_admin, espera):
     a = crear_app(servidor)
     entrar(a, "comprador", servidor.comp_pw)
     v = a.ventana
+    # como en 5a: esperar carga inicial y WS conectado, o el evento de alta se pierde antes de suscribirse
+    assert espera(lambda: v.estado in ("lista", "vacio") and a.eventos.esta_conectado, 15)
     p = crear_oferta(api_admin, stock=10, precio=12000, nombre="Producto precio obsoleto")
     assert espera(lambda: p.id in v.tarjetas, 8)
     espera(lambda: False, 2.0)                       # deja drenar el refresco del evento de alta
@@ -118,5 +115,5 @@ def test_bug_editar_precio_o_vencimiento_no_notifica_por_ws(servidor, crear_app,
     api_admin.actualizar_producto(p.id, ProductoUpdate(precio_base=20000))
     assert next(x for x in api_admin.listar_productos() if x.id == p.id).precio_base == 20000   # el servidor SI cambio
     ok = espera(lambda: v.tarjetas[p.id].lbl_original.text() == "$20.000", 6)
-    print(f"\n[bug] eventos WS recibidos tras editar precio: {vistos}; tarjeta muestra {v.tarjetas[p.id].lbl_original.text()}")
+    print(f"\n[5c] eventos WS recibidos tras editar precio: {vistos}; tarjeta muestra {v.tarjetas[p.id].lbl_original.text()}")
     assert ok, f"precio obsoleto en el comprador tras 6 s; eventos WS: {vistos}"

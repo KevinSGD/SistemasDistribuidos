@@ -209,3 +209,28 @@ def test_eventos_ws_llegan_a_las_vistas_sin_contar_actividad(crear_app, espera, 
     assert espera(lambda: "config_cambiada" in vistos)
     assert a.idle.restantes() <= restantes_antes      # el evento no renovo el tiempo local
     api_admin.actualizar_config({"nombre_negocio": "Tienda"})
+
+
+def test_cierre_por_servidor_no_deja_warning_de_sesion_cerrada_sin_manejador(
+        crear_app, espera, api_admin, caplog):
+    import logging
+    u = api_admin.crear_usuario(UsuarioIn(nombre="Victima2", usuario="victima2",
+                                          password="clave-victima-2"))
+    a = crear_app()
+    entrar(a, espera, "victima2", "clave-victima-2")
+    assert espera(lambda: a.eventos.esta_conectado)
+    with caplog.at_level(logging.DEBUG):
+        api_admin.actualizar_usuario(u.id, UsuarioUpdate(activo=False))
+        assert espera(lambda: a.sesion is None, timeout=8)
+        espera(lambda: False, timeout=0.8)           # deja llegar verificaciones en vuelo
+    assert not [r for r in caplog.records
+                if r.levelno >= logging.WARNING and "sin manejador" in r.getMessage()]
+
+
+def test_error_inesperado_al_verificar_sesion_si_se_registra(crear_app, espera, caplog):
+    import logging
+    a = crear_app()
+    entrar(a, espera)
+    with caplog.at_level(logging.WARNING):
+        a._error_verificacion(RuntimeError("boom"))
+    assert any("verificar la sesion" in r.getMessage() for r in caplog.records)

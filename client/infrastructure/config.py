@@ -13,7 +13,8 @@ from platformdirs import user_config_dir
 
 ENV_URL = "INVENTARIO_URL"
 ENV_DIR = "INVENTARIO_CLIENT_DIR"
-URL_POR_DEFECTO = "http://localhost:8000"
+# IP y no "localhost": en Windows + WSL2, "localhost" tarda ~2,2 s por conexion nueva (prueba ::1 primero).
+URL_POR_DEFECTO = "http://127.0.0.1:8000"
 ARCHIVO = "cliente.json"
 
 # Timeouts cortos (segundos): la GUI nunca espera, pero los workers tampoco deben colgarse.

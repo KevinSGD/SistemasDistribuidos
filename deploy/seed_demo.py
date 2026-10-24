@@ -159,7 +159,7 @@ def iso(d: datetime | None):
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--url", default=os.environ.get("INVENTARIO_URL", "http://localhost:8000"))
+    ap.add_argument("--url", default=os.environ.get("INVENTARIO_URL", "http://127.0.0.1:8000"))
     ap.add_argument("--usuario", default="admin")
     ap.add_argument("--password", default=os.environ.get("INVENTARIO_ADMIN_PASSWORD"))
     ap.add_argument("--desde-wsl", action="store_true", help="leer la clave de ~/.inventario/credenciales.env en WSL")

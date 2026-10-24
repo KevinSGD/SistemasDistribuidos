@@ -177,6 +177,7 @@ class BuyerWindow(QMainWindow):
         app_ctx.sondeo.connect(self._programar_refresco)
         self._cargar_config()
         self.cargar()
+        self.buscador.setFocus(Qt.FocusReason.OtherFocusReason)   # foco inicial: buscador, no "Cerrar sesion"
 
     # -- construccion ---------------------------------------------------------------------
     def _adaptar_barra(self, nombre: str) -> None:

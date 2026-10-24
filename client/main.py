@@ -11,6 +11,7 @@ from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication
 
 from client.application.sesion import Aplicacion
+from client.infrastructure.logfilter import RedactarTokenFilter
 from client.presentation.styles.theme import aplicar_tema
 
 
@@ -21,6 +22,8 @@ def main(argv: list[str] | None = None) -> int:
     args, resto = parser.parse_known_args(argv if argv is not None else sys.argv[1:])
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    for h in logging.getLogger().handlers:
+        h.addFilter(RedactarTokenFilter())      # nunca escribir ?token=<JWT> en los logs
     app = QApplication([sys.argv[0], *resto])
     app.setStyle("Fusion")
     aplicar_tema(app)

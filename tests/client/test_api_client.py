@@ -169,3 +169,15 @@ def test_cerrar_sin_peticiones_cierra_de_inmediato():
     api.cerrar()
     api.cerrar()                      # idempotente
     assert api._http_cerrado is True
+
+
+def test_url_por_defecto_es_ip_literal_y_la_explicita_se_respeta(monkeypatch, tmp_path):
+    from client.infrastructure import config as c
+    monkeypatch.delenv(c.ENV_URL, raising=False)
+    monkeypatch.setenv(c.ENV_DIR, str(tmp_path))
+    assert c.cargar_url() == c.URL_POR_DEFECTO == "http://127.0.0.1:8000"
+    monkeypatch.setenv(c.ENV_URL, "http://localhost:9000")          # explicita: no se reescribe
+    assert c.cargar_url() == "http://localhost:9000"
+    monkeypatch.delenv(c.ENV_URL)
+    c.guardar_url("localhost:8123")
+    assert c.cargar_url() == "http://localhost:8123"

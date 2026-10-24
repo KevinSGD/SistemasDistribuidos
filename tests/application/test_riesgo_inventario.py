@@ -205,7 +205,7 @@ def test_crud_inventario_y_eventos(inventario, factory, eventos):
     assert (e.stock, e.precio_base) == (7, 4.0)
     assert eventos[-1]["payload"]["stock"] == 7
     n = len(eventos)
-    inventario.editar(p.id, {"nombre": "Arroz Extra"}, "admin")   # sin cambio de stock
+    inventario.editar(p.id, {"nombre": "Arroz", "stock": 7}, "admin")   # nada cambia: sin evento
     assert len(eventos) == n
     assert [x.id for x in inventario.listar("comprador")] == [p.id]
     inventario.dar_de_baja(p.id, "admin")
@@ -214,6 +214,29 @@ def test_crud_inventario_y_eventos(inventario, factory, eventos):
     assert [x.id for x in inventario.listar("admin", activos=None)] == [p.id]
     with pytest.raises(NoEncontrado):
         inventario.editar(999, {"stock": 1}, "admin")
+
+
+@pytest.mark.parametrize("cambio", [
+    {"precio_base": 9.5}, {"stock_maximo": 80}, {"nombre": "Arroz Extra"}, {"categoria": "Cereales"},
+    {"fecha_vencimiento": "2027-06-30T00:00:00"}, {"fecha_vencimiento": None}])
+def test_editar_cualquier_campo_visible_publica_stock_actualizado(inventario, eventos, cambio):
+    p = inventario.crear(DATOS, "admin")
+    n = len(eventos)
+    inventario.editar(p.id, cambio, "admin")
+    assert len(eventos) == n + 1
+    assert eventos[-1]["tipo"] == "stock_actualizado"
+    assert eventos[-1]["payload"] == {"producto_id": p.id, "stock": 10, "activo": True}
+
+
+def test_desactivar_con_descuento_publica_descuento_cambiado(inventario, riesgo, eventos):
+    p = inventario.crear({**DATOS, "fecha_vencimiento": AHORA + timedelta(days=2)}, "admin")
+    riesgo.escanear()
+    n = len(eventos)
+    inventario.editar(p.id, {"activo": False}, "admin")
+    nuevos = eventos[n:]
+    assert [e["tipo"] for e in nuevos] == ["stock_actualizado", "descuento_cambiado"]
+    assert nuevos[0]["payload"]["activo"] is False
+    assert nuevos[1]["payload"]["producto_id"] == p.id and nuevos[1]["payload"]["porcentaje"] == 0.0
 
 
 def test_baja_desactiva_descuentos(inventario, riesgo, factory):

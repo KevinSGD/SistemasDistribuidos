@@ -12,7 +12,7 @@ from server.infrastructure.db.repos import DescuentoRepo, ProductoRepo
 
 from . import consultas_extra
 from .errores import ErrorValidacion, exigir_admin, exigir_autenticado
-from .eventos import STOCK_ACTUALIZADO, EventBus, evento
+from .eventos import DESCUENTO_CAMBIADO, STOCK_ACTUALIZADO, EventBus, evento
 
 CAMPOS = {"nombre", "categoria", "precio_base", "stock", "stock_maximo",
           "fecha_vencimiento", "activo"}
@@ -128,10 +128,16 @@ class InventarioService:
                 raise NoEncontrado("Producto no encontrado", {"producto_id": id})
             nuevo = replace(actual, **v)
             guardado = repo.actualizar(nuevo)
+            desc_quitado = False
             if not nuevo.activo:
-                DescuentoRepo(s).desactivar(id)
-        if guardado.stock != actual.stock or guardado.activo != actual.activo:
+                desc_quitado = bool(DescuentoRepo(s).desactivar(id))
+        # Cualquier cambio visible para el comprador (precio, vencimiento, nombre, categoria,
+        # stock_maximo, stock, activo) notifica `stock_actualizado` con el estado fresco.
+        if any(getattr(guardado, c) != getattr(actual, c) for c in CAMPOS):
             self._publicar_stock(guardado)
+        if desc_quitado and self._bus is not None:
+            self._bus.publicar(evento(DESCUENTO_CAMBIADO, {
+                "producto_id": id, "porcentaje": 0.0, "motivo": "Producto inactivo"}))
         return guardado
 
     def dar_de_baja(self, id: int, rol: str | None) -> None:

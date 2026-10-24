@@ -1,6 +1,6 @@
 # Arranca el cliente PyQt6 con el .venv del proyecto.
-# Uso: .\start_client.ps1 [-Url http://localhost:8000] [-SalirEn 3]
-# Prioridad de URL: -Url > variable INVENTARIO_URL ya definida > http://localhost:8000
+# Uso: .\start_client.ps1 [-Url http://127.0.0.1:8000] [-SalirEn 3]
+# Prioridad de URL: -Url > variable INVENTARIO_URL ya definida > http://127.0.0.1:8000
 param(
     [string]$Url,
     [double]$SalirEn = 0   # solo pruebas de humo (cierra la app tras N segundos)
@@ -12,7 +12,7 @@ if (-not (Test-Path $py)) {
     exit 1
 }
 if ($Url) { $env:INVENTARIO_URL = $Url }
-elseif (-not $env:INVENTARIO_URL) { $env:INVENTARIO_URL = 'http://localhost:8000' }
+elseif (-not $env:INVENTARIO_URL) { $env:INVENTARIO_URL = 'http://127.0.0.1:8000' }
 # Equivale a activar el venv (sin depender de la politica de ejecucion de Activate.ps1)
 $env:VIRTUAL_ENV = Join-Path $raiz '.venv'
 $env:PATH = (Join-Path $raiz '.venv\Scripts') + ';' + $env:PATH

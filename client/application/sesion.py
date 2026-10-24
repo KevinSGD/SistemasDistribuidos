@@ -237,7 +237,15 @@ class Aplicacion(QObject):
     def _verificar_sesion(self) -> None:
         api = self.api
         if api is not None:
-            ejecutar(api.estado_sesion, None, None, self)      # 401 => callback del ApiClient
+            ejecutar(api.estado_sesion, None, self._error_verificacion, self)   # 401 => callback del ApiClient
+
+    def _error_verificacion(self, exc: BaseException) -> None:
+        """Un 401 ya lo gestiona el callback de sesion invalida del ApiClient (cierra la sesion);
+        no es un error inesperado. Cualquier otro fallo si se registra."""
+        if isinstance(exc, ApiError) and exc.http == 401:
+            log.debug("Verificacion de sesion: %s (cierre gestionado)", exc.codigo)
+        else:
+            log.warning("Error al verificar la sesion: %r", exc)
 
     def _refrescar_parametros_sesion(self) -> None:
         api = self.api

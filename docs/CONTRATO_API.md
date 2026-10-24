@@ -73,12 +73,12 @@ Claves nuevas de sesión: `inactividad_segundos` (def. **180**, rango 30–3600)
 (también disponible como `/api/v1/ws`). Cada mensaje es JSON `{"evento": <nombre>, "payload": {...}}`. Servidor → cliente (no renueva actividad; lo que envíe el cliente se ignora):
 | evento | payload | quién lo recibe |
 |---|---|---|
-| `stock_actualizado` | `{producto_id, stock}` | todos |
+| `stock_actualizado` | `{producto_id, stock, activo}` | todos |
 | `descuento_cambiado` | `{producto_id, porcentaje, motivo}` | todos |
 | `productos_retirados` | `{nombres:[...]}` | admin |
 | `config_cambiada` | `{claves:[...]}` | todos |
 | `sesion_cerrada` | `{motivo}` | el usuario afectado |
 
-`stock_actualizado` incluye además `activo`. `sesion_cerrada.motivo`: `logout`, `inactividad`, `usuario_desactivado`, `password_cambiada`, `token_invalido`. Un `sesion_cerrada` solo cierra el socket si ESA sesión ya no es válida (cerrar otra sesión del mismo usuario no lo afecta).
+`stock_actualizado` se publica al crear, vender, dar de baja y al editar CUALQUIER campo de un producto (precio_base, stock_maximo, fecha_vencimiento, nombre, categoria, stock, activo), no solo stock/activo: es la señal de "vuelve a pedir este producto" y los clientes refrescan su lista al recibirlo. Al desactivar un producto con descuento vigente se publica además `descuento_cambiado` con `porcentaje: 0`. No se añadió un evento nuevo. `sesion_cerrada.motivo`: `logout`, `inactividad`, `usuario_desactivado`, `password_cambiada`, `token_invalido`. Un `sesion_cerrada` solo cierra el socket si ESA sesión ya no es válida (cerrar otra sesión del mismo usuario no lo afecta).
 
 Cierre con código 4401 (tras aceptar la conexión) si el token es inválido o la sesión caducó. El servidor revalida cada ~5 s los sockets abiertos (sin renovar actividad) y cierra con 4401, tras enviar `sesion_cerrada`, si caducó por inactividad o por `sesion_maxima_minutos`. Si el cliente pierde el socket, reconecta con backoff y mientras tanto usa polling cada 60 s.

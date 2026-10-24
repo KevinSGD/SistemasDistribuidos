@@ -649,3 +649,10 @@ def test_pdf_sin_fuentes_ttf_usa_helvetica_con_tildes(qapp, tmp_path, monkeypatc
     ruta = factura_pdf.generar_factura_pdf(factura_demo(), tmp_path)
     assert ruta.read_bytes().startswith(b"%PDF")
     monkeypatch.setattr(factura_pdf, "_fuentes", None)           # no contaminar a otros tests
+
+
+def test_foco_inicial_en_el_buscador(comprador):
+    comprador.ventana.show()
+    QApplication.processEvents()
+    assert comprador.ventana.focusWidget() is comprador.ventana.buscador
+    assert comprador.ventana.barra.btn_salir.hasFocus() is False

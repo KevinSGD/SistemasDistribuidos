@@ -12,7 +12,7 @@ $ips | ForEach-Object { Write-Host "  http://${_}:$p" }
 Write-Host "IP actual de WSL: $ipWsl  (cambia al reiniciar WSL)"
 Write-Host ""
 Write-Host "== Mismo equipo ==" -ForegroundColor Cyan
-Write-Host "  http://localhost:$p  (localhost forwarding de WSL2, por defecto activo)"
+Write-Host "  http://127.0.0.1:$p  (localhost forwarding de WSL2, por defecto activo)"
 Write-Host ""
 Write-Host "== Otro portatil (ejecute usted en PowerShell COMO ADMINISTRADOR; no se ejecutan aqui) ==" -ForegroundColor Cyan
 Write-Host "Opcion A (recomendada, Windows 11 22H2+): WSL en modo espejo. Cree/edite %UserProfile%\.wslconfig:"

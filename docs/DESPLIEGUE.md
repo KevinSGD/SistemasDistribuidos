@@ -1,7 +1,7 @@
 # Despliegue: servidor en WSL2 (Ubuntu) + cliente PyQt6 en Windows
 
 Arquitectura: el servidor FastAPI/uvicorn corre en Ubuntu sobre WSL2 y el cliente PyQt6 en Windows;
-hablan por HTTP + WebSocket reales (`http://localhost:8000`).
+hablan por HTTP + WebSocket reales (`http://127.0.0.1:8000`).
 
 | Nodo | Dependencias | Archivo |
 |---|---|---|
@@ -49,10 +49,10 @@ El servidor queda en segundo plano (nohup + setsid) y sobrevive al cierre de la 
 detecta (se verifica que el PID siga vivo y sea `server.main`) y se limpia solo. Si el puerto esta ocupado por otro proceso, el script lo dice y sale con codigo 2
 (use `INVENTARIO_PORT=8001`).
 
-Verificacion de salud: `GET http://localhost:8000/api/v1/health` -> `{"estado":"ok","version":"1.0.0","so":"Linux"}`.
+Verificacion de salud: `GET http://127.0.0.1:8000/api/v1/health` -> `{"estado":"ok","version":"1.0.0","so":"Linux"}`.
 
 ```powershell
-Invoke-RestMethod http://localhost:8000/api/v1/health
+Invoke-RestMethod http://127.0.0.1:8000/api/v1/health
 ```
 
 ## 4. Demo con dos clientes
@@ -61,13 +61,15 @@ Invoke-RestMethod http://localhost:8000/api/v1/health
 .\deploy\windows\demo.ps1
 ```
 
-Arranca el servidor, comprueba health, muestra las credenciales (leidas de WSL) y abre dos clientes con `INVENTARIO_URL=http://localhost:8000`:
+Arranca el servidor, comprueba health, muestra las credenciales (leidas de WSL) y abre dos clientes con `INVENTARIO_URL=http://127.0.0.1:8000`:
 inicie sesion en uno como `admin` y en el otro como `comprador`. Con `.\deploy\windows\demo.ps1 -ConDatos` ademas carga ~25 productos de minimercado (ver "Datos de demostracion" y "Guion de demostracion" mas abajo)
 despues del health y antes de abrir los clientes; sin `-ConDatos` el comportamiento no cambia.
 Un solo cliente: `.\deploy\windows\start_client.ps1 [-Url http://IP:8000]`.
-La URL tambien se puede escribir en el campo "Servidor" del login. Prioridad: variable `INVENTARIO_URL` > ajustes guardados > `http://localhost:8000`.
+La URL tambien se puede escribir en el campo "Servidor" del login. Prioridad: variable `INVENTARIO_URL` > ajustes guardados > `http://127.0.0.1:8000`.
 
 ## 5. Red: como llega Windows a WSL
+
+> **Nota: `127.0.0.1` y no `localhost`.** En Windows 11 + WSL2, `localhost` resuelve primero a IPv6 (`::1`), que se rechaza, y solo despues cae a `127.0.0.1`: cada conexion nueva (login, reconexion del WebSocket) pierde ~2,2 s frente a ~0,2 s con la IP. Por eso los scripts y el cliente usan `http://127.0.0.1:8000` por defecto. Una URL escrita explicitamente (login, `-Url`, `INVENTARIO_URL`) se respeta tal cual, incluso `localhost`.
 
 - Mismo equipo: WSL2 reenvia `localhost` de Windows al servidor de Linux (localhost forwarding, activo por defecto). Es lo que usan los scripts.
   Si no funcionara (`localhostForwarding=false` en `%UserProfile%\.wslconfig` o puerto 8000 ocupado en Windows), use la IP de WSL
@@ -87,7 +89,7 @@ La URL tambien se puede escribir en el campo "Servidor" del login. Prioridad: va
 | Sintoma | Accion |
 |---|---|
 | `Faltan paquetes del sistema` | Ejecute el `sudo apt install ...` que indica el script. |
-| `El puerto 8000 ya esta ocupado` | `ss -ltnp 'sport = :8000'` en WSL; o `INVENTARIO_PORT=8001` (y `-Url http://localhost:8001`). |
+| `El puerto 8000 ya esta ocupado` | `ss -ltnp 'sport = :8000'` en WSL; o `INVENTARIO_PORT=8001` (y `-Url http://127.0.0.1:8001`). |
 | Health OK en WSL pero no en Windows | Seccion 5 (forwarding / IP de WSL). |
 | Timeout al arrancar | `tail -n 50 ~/.inventario/logs/stdout.log` (el script ya imprime las ultimas lineas). |
 | Login falla con las credenciales | La BD ya existia antes de generar `credenciales.env`: borre los datos de demo (abajo). |
@@ -126,7 +128,7 @@ normales (12-200 dias), sin vencimiento, uno que vence hoy a las 23:59 y uno que
 .\.venv\Scripts\python.exe deploy\seed_demo.py --desde-wsl --limpiar       # da de baja los productos de la demo
 ```
 
-- URL: `--url` o `INVENTARIO_URL` (por defecto `http://localhost:8000`). Clave: `--password`, `INVENTARIO_ADMIN_PASSWORD` o `--desde-wsl` (lee
+- URL: `--url` o `INVENTARIO_URL` (por defecto `http://127.0.0.1:8000`). Clave: `--password`, `INVENTARIO_ADMIN_PASSWORD` o `--desde-wsl` (lee
   `~/.inventario/credenciales.env`); nunca se imprime. En Linux: `python3 deploy/seed_demo.py --password ...` (solo `pip install httpx`).
 - Las fechas envejecen: **el mismo dia de la defensa ejecute `--reset-fechas`** (o `demo.ps1 -ConDatos`, que ya lo hace).
 - `--minutos N` fija en cuanto vence el producto "Sandwich de pollo (retiro en vivo)" (por defecto 4). El escaneo automatico corre cada
@@ -139,7 +141,7 @@ Preparacion (5 min antes): `.\deploy\windows\demo.ps1 -ConDatos` (arranca el ser
 Para el retiro en vivo, haga la carga con `--minutos` acorde a su turno: el producto debe vencer cuando llegue a ese punto del guion
 (p. ej. `seed_demo.py --desde-wsl --reset-fechas --minutos 10` justo antes de empezar). Si ya vencio, repita el comando.
 
-1. **Arranque y salud.** Muestre el servidor corriendo en WSL y `Invoke-RestMethod http://localhost:8000/api/v1/health` -> `"so":"Linux"`. Los clientes son procesos de Windows.
+1. **Arranque y salud.** Muestre el servidor corriendo en WSL y `Invoke-RestMethod http://127.0.0.1:8000/api/v1/health` -> `"so":"Linux"`. Los clientes son procesos de Windows.
 2. **Dos roles a la vez.** Ventana 1: `admin`; ventana 2: `comprador` (las claves las imprime `demo.ps1`).
 3. **Alertas y descuentos (admin).** Panel de riesgo: criticos (pan tajado, yogur, jamon, lechuga), altos (croissant, queso, jugo, banano), sobrestock (arroz, tomate, agua) y stock bajo (salchichas, pollo apanado). Explique las reglas: 50 % critico, 30 % alto, 10 % sobrestock (configurables).
 4. **Catalogo con descuento (comprador).** Muestre las ofertas con precio original, final y motivo.

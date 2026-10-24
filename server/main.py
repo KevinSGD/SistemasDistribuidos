@@ -12,6 +12,8 @@ from pathlib import Path
 import uvicorn
 from platformdirs import user_log_dir
 
+from server.logfilter import RedactarTokenFilter
+
 FORMATO = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
 
@@ -24,12 +26,16 @@ def configurar_logs() -> Path:
     archivo.setFormatter(logging.Formatter(FORMATO))
     consola = logging.StreamHandler()
     consola.setFormatter(logging.Formatter(FORMATO))
+    filtro = RedactarTokenFilter()
+    for h in (archivo, consola):
+        h.addFilter(filtro)
     raiz = logging.getLogger()
     raiz.setLevel(logging.INFO)
     raiz.handlers = [consola, archivo]
     for nombre in ("uvicorn", "uvicorn.error", "uvicorn.access"):
         lg = logging.getLogger(nombre)
         lg.handlers = []
+        lg.addFilter(filtro)
         lg.propagate = True       # uvicorn usa handlers propios; se centraliza en la raiz
     return ruta
 

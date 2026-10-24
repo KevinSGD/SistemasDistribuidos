@@ -46,7 +46,7 @@ Variables opcionales: `INVENTARIO_E2E_PUERTO` (puerto base, 8010), `INVENTARIO_W
 | Comando | Resultado real |
 |---|---|
 | `QT_QPA_PLATFORM=offscreen .venv\Scripts\python.exe -m pytest tests -q -p no:cacheprovider` | **398 passed, 32 deselected, 6 warnings in 145.22s** (los 398 de antes; los 32 son los e2e) |
-| `.venv\Scripts\python.exe -m pytest tests/e2e -m e2e -p no:cacheprovider -v -rx --durations=0` | **29 passed, 3 xfailed in 187.15s (0:03:07)** |
+| `.venv\Scripts\python.exe -m pytest tests/e2e -m e2e -p no:cacheprovider -v -rx --durations=0` | **32 passed, 0 xfailed in 191.44s (0:03:11)** (tras corregir H-1, H-2 y H-3; antes: 29 passed, 3 xfailed) |
 
 ### 4.2 Tabla de escenarios
 
@@ -81,9 +81,9 @@ Duración = la de pytest en la corrida completa (`call`, y `setup` donde ahí es
 | 8g | FK y CHECK activos en la BD de Linux (`PRAGMA foreign_keys=1`, WAL): 2 FK (`FOREIGN KEY constraint failed`) y 4 CHECK (`ck_producto_stock`, `ck_producto_precio_base`, `ck_descuento_porcentaje`, `ck_detalle_cantidad`) rechazan; y por API un stock negativo da 422 | `test_08` | PASSED | 0,75 s |
 | 8h | El WebSocket entrega el evento al otro cliente: `{"evento":"stock_actualizado","payload":{"producto_id":6,"stock":3,"activo":true}}` en 49 ms | `test_08` | PASSED | 0,09 s |
 | 8i | Flujo del administrador por la UI: login, las 5 vistas cargan, barra "Servidor en línea · Linux" | `test_08` | PASSED | 1,1 s |
-| H-1 | Editar precio/vencimiento no notifica por WS | `test_05::test_bug_editar_precio…` | **XFAIL** (bug) | 8,4 s |
-| H-2 | El JWT aparece en los logs del servidor | `test_09::test_el_jwt_no_debe…` | **XFAIL** (bug) | 1,0 s |
-| H-3 | Conexión nueva a `localhost` tarda ~2,2 s | `test_09::test_conexion_nueva…` | **XFAIL** (hallazgo) | 13,1 s |
+| H-1 | Editar precio/vencimiento no notifica por WS | `test_05::test_editar_precio_notifica_por_ws` | **CORREGIDO** (pasa) | 8,4 s |
+| H-2 | El JWT aparece en los logs del servidor | `test_09::test_el_jwt_no_debe…` | **CORREGIDO** (pasa) | 1,0 s |
+| H-3 | Conexión nueva a `localhost` tarda ~2,2 s | `test_09::test_conexion_nueva…` | **CORREGIDO** (pasa) | 13,1 s |
 
 Nota 1 (2d): al expirar, el cliente hace `logout` y ese primer contacto ya cierra la sesión en el servidor por inactividad; por eso el token de ese cliente responde después `401 SESION_CERRADA` con `detalle.motivo = "inactividad"`. La respuesta literal `401 SESION_INACTIVA` ("Sesión cerrada por inactividad") la da el servidor a una sesión sin cliente (la sonda HTTP): a los 25 s seguía viva con 4 s restantes y a los 31,5 s devolvió exactamente `401 SESION_INACTIVA`. Ambos casos están asertados.
 
@@ -114,13 +114,13 @@ Todos los clientes de §2 viven a la vez en una sola línea de tiempo (~50 s tra
 
 No se modificó `client/` ni `server/`.
 
-**H-1 (bug de servidor, media): editar precio, vencimiento, nombre, categoría o stock máximo de un producto no emite ningún evento WS.**
+**H-1 (CORREGIDO; bug de servidor, media): editar precio, vencimiento, nombre, categoría o stock máximo de un producto no emite ningún evento WS.**
 `server/application/inventario_service.py`, `InventarioService.editar`: solo llama a `_publicar_stock` si cambia `stock` o `activo`. Reproducción: con el comprador conectado, `PUT /productos/{id}` con `fecha_vencimiento` a 1,5 días (el producto pasa a oferta crítica; `GET /ofertas` ya lo incluye) → el cliente recibe 0 eventos y la tarjeta no aparece tras 6–8 s. Idem con `precio_base`. El sondeo de respaldo del cliente solo corre con el socket caído, así que el comprador ve datos obsoletos hasta el siguiente evento no relacionado (en un primer intento un cambio de precio "pasó" solo porque coincidió con la recarga diferida de un evento de stock anterior). Test: `test_05_tiempo_real.py::test_bug_editar_precio_o_vencimiento_no_notifica_por_ws` (xfail, `strict=False`).
 
-**H-2 (bug de seguridad, media): el JWT queda en los logs del servidor.**
+**H-2 (CORREGIDO; bug de seguridad, media): el JWT queda en los logs del servidor.**
 El WS se autentica con `/ws?token=<JWT>` y uvicorn registra la URL completa: `INFO uvicorn.error: … "WebSocket /ws?token=eyJhbGciOi…" [accepted]`. Verificado en `stdout.log` y en `servidor.log` de la instancia. Quien lea los logs puede reutilizar el token mientras la sesión viva. Test: `test_09_hallazgos.py::test_el_jwt_no_debe_aparecer_en_los_logs_del_servidor` (xfail). Mitigación: filtrar la query string en el log, o autenticar con un primer mensaje/subprotocolo.
 
-**H-3 (rendimiento de despliegue, media): `localhost` cuesta ~2,2 s por conexión nueva en Windows 11 + WSL2.**
+**H-3 (CORREGIDO; rendimiento de despliegue, media): `localhost` cuesta ~2,2 s por conexión nueva en Windows 11 + WSL2.**
 Medido: conexión nueva a `http://localhost:<p>`: mediana 2.240 ms (máx 2.259); a `http://127.0.0.1:<p>`: mediana 206 ms; conexión a `::1`: `ConnectionRefusedError` tras 2,02 s (Windows intenta IPv6 primero). Con conexión reutilizada ambos dan ~1 ms. Afecta a `URL_POR_DEFECTO = "http://localhost:8000"` (client/infrastructure/config.py) y a `deploy/windows/*.ps1`: cada login (conexión nueva) y cada reconexión del WS pagan ~2 s. Mitigación: `127.0.0.1` por defecto. Test: `test_09_hallazgos.py::test_conexion_nueva_a_localhost_deberia_tardar_menos_de_1s` (xfail). Las fixtures E2E usan `127.0.0.1` por esta razón.
 
 Observaciones menores (sin test):
@@ -137,7 +137,7 @@ Observaciones menores (sin test):
 - No se probó `wsl --shutdown` ni la caída de WSL completo (prohibido por las reglas de la tarea); el "servidor caído" es SIGTERM al proceso propio.
 - Un solo worker de uvicorn (diseño); las carreras de compra se probaron con hasta 6 clientes concurrentes sobre SQLite/WAL, no con carga masiva.
 - El visor de PDF se sustituyó por un doble (`sin_visor`); el PDF se valida estructuralmente y por texto, no visualmente.
-- Los xfail son `strict=False`: si se corrige un bug aparecerán como XPASS en lugar de romper la suite.
+- Correcciones: H-1 (`editar` publica `stock_actualizado` ante cualquier cambio visible), H-2 (`server/logfilter.py` redacta `token=` en los handlers y loggers uvicorn), H-3 (URL por defecto `http://127.0.0.1:8000`). Ya no quedan xfail.
 - Las cifras de latencia dependen de la máquina (12 núcleos, 15,5 GB de RAM).
 
 ## 7. Capturas reales (`docs/capturas/`)

@@ -4,7 +4,7 @@ $ErrorActionPreference = 'Stop'
 $script:RepoRaiz = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $script:Distro = if ($env:INVENTARIO_WSL_DISTRO) { $env:INVENTARIO_WSL_DISTRO } else { 'Ubuntu' }
 $script:Puerto = if ($env:INVENTARIO_PORT) { $env:INVENTARIO_PORT } else { '8000' }
-$script:UrlLocal = "http://localhost:$($script:Puerto)"
+$script:UrlLocal = "http://127.0.0.1:$($script:Puerto)"
 
 # C:\a\b -> /mnt/c/a/b
 function ConvertTo-WslPath([string]$ruta) {
