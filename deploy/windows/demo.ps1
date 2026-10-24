@@ -1,10 +1,20 @@
 # Demo completa en una sola maquina: servidor en WSL -> health -> credenciales -> dos clientes.
-# Uso: .\demo.ps1 [-SinClientes]
-param([switch]$SinClientes)
+# Uso: .\demo.ps1 [-SinClientes] [-ConDatos]
+#   -ConDatos: carga productos de demo (deploy/seed_demo.py --reset-fechas) antes de abrir los clientes.
+param([switch]$SinClientes, [switch]$ConDatos)
 . "$PSScriptRoot\_comun.ps1"
 
 & "$PSScriptRoot\start_server_wsl.ps1"
 if ($LASTEXITCODE -ne 0) { Write-Host "No se pudo levantar el servidor; demo cancelada." -ForegroundColor Red; exit 1 }
+
+if ($ConDatos) {
+    Write-Host ""
+    Write-Host "== Cargando datos de demo ==" -ForegroundColor Cyan
+    $py = Join-Path $script:RepoRaiz '.venv\Scripts\python.exe'
+    if (-not (Test-Path $py)) { Write-Host "No existe $py (cree el .venv; ver docs/DESPLIEGUE.md)." -ForegroundColor Red; exit 1 }
+    & $py (Join-Path $script:RepoRaiz 'deploy\seed_demo.py') --url $script:UrlLocal --desde-wsl --distro $script:Distro --reset-fechas
+    if ($LASTEXITCODE -ne 0) { Write-Host "Fallo la carga de datos; demo cancelada." -ForegroundColor Red; exit 1 }
+}
 
 Write-Host ""
 Write-Host "== Credenciales de demo (leidas de WSL: ~/.inventario/credenciales.env) ==" -ForegroundColor Cyan
