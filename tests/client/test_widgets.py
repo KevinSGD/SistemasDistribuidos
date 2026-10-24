@@ -10,7 +10,7 @@ from PyQt6.QtCore import Qt  # noqa: E402
 from PyQt6.QtWidgets import QApplication, QPushButton, QWidget  # noqa: E402
 
 from client.presentation.styles.theme import (  # noqa: E402
-    COLOR_NIVEL, COLORES, FUENTE, aplicar_tema, fmt_moneda, hoja_estilo,
+    COLOR_NIVEL, COLOR_NIVEL_BADGE, COLORES, FUENTE, aplicar_tema, fmt_moneda, hoja_estilo,
 )
 from client.presentation.widgets import (  # noqa: E402
     BadgeNivel, Cargando, DialogoInactividad, DocumentoFactura, EstadoVacio, Esqueleto,
@@ -230,9 +230,115 @@ def test_toast_reposiciona_al_redimensionar(ventana):
 def test_badge_nivel(app, entrada, nivel):
     b = BadgeNivel(entrada)
     assert b.nivel == nivel
-    texto, fondo = COLOR_NIVEL[nivel]
+    texto, fondo = COLOR_NIVEL_BADGE[nivel]
     assert texto in b.styleSheet() and fondo in b.styleSheet()
+    assert fondo == COLOR_NIVEL[nivel][1]  # el fondo es el del documento
     assert b.text() == {"critico": "Crítico", "alto": "Alto", "medio": "Medio", "normal": "Normal"}[nivel]
+
+
+def _razon_wcag(fg: str, bg: str) -> float:
+    """Implementacion independiente de la razon de contraste WCAG 2.x."""
+    def lum(h: str) -> float:
+        canales = []
+        for i in (1, 3, 5):
+            s = int(h[i:i + 2], 16) / 255
+            canales.append(s / 12.92 if s <= 0.03928 else ((s + 0.055) / 1.055) ** 2.4)
+        return 0.2126 * canales[0] + 0.7152 * canales[1] + 0.0722 * canales[2]
+    a, b = lum(fg), lum(bg)
+    return (max(a, b) + 0.05) / (min(a, b) + 0.05)
+
+
+@pytest.mark.parametrize("nivel", ["critico", "alto", "medio", "normal"])
+def test_badge_nivel_contraste_aa(app, nivel):
+    b = BadgeNivel(nivel)
+    texto, fondo = COLOR_NIVEL_BADGE[nivel]
+    assert texto in b.styleSheet() and fondo in b.styleSheet()
+    assert _razon_wcag(texto, fondo) >= 4.5
+
+
+def test_colores_aa_son_nuevas_claves_y_originales_intactos(app):
+    assert COLORES["nivel_alto"] == "#D97706" and COLORES["nivel_medio"] == "#CA8A04"
+    assert COLORES["nivel_critico"] == "#DC2626" and COLORES["texto_tenue"] == "#9CA3AF"
+    for k, fondo in (("nivel_critico_texto_aa", "nivel_critico_fondo"),
+                     ("nivel_alto_texto_aa", "nivel_alto_fondo"),
+                     ("nivel_medio_texto_aa", "nivel_medio_fondo"),
+                     ("texto_tenue_aa", "superficie_alt")):
+        assert _razon_wcag(COLORES[k], COLORES[fondo]) >= 4.5
+    assert _razon_wcag(COLORES["texto_tenue_aa"], COLORES["superficie"]) >= 4.5
+    # el original de "alto" y "medio" NO cumple AA (por eso existen las claves nuevas)
+    assert _razon_wcag(COLORES["nivel_alto"], COLORES["nivel_alto_fondo"]) < 4.5
+    assert _razon_wcag(COLORES["nivel_medio"], COLORES["nivel_medio_fondo"]) < 4.5
+
+
+# ---------------------------------------------------------------- flecha del combo
+def _urls_down_arrow(qss: str) -> list[str]:
+    import re
+    return re.findall(r'QComboBox::down-arrow[^{]*\{\s*image:\s*url\("([^"]+)"\)', qss)
+
+
+def test_combo_flecha_en_hoja_estilo(app):
+    from PyQt6.QtGui import QIcon, QPixmap
+    qss = hoja_estilo()
+    for pseudo in ("QComboBox::down-arrow {", "QComboBox::down-arrow:hover", "QComboBox::down-arrow:focus",
+                   "QComboBox::down-arrow:disabled"):
+        assert pseudo in qss
+    urls = _urls_down_arrow(qss)
+    assert len(urls) == 4 and len(set(urls)) == 4  # un archivo por color/estado
+    for u in urls:
+        assert "\\" not in u
+        assert os.path.isfile(u)
+        pm = QPixmap(u)
+        assert not pm.isNull() and pm.width() > 0
+        assert not QIcon(u).isNull()
+
+
+def test_combo_flecha_cache_estable(app):
+    from client.presentation.styles import theme
+    assert theme.ruta_chevron("#6B7280") == theme.ruta_chevron("#6b7280")
+
+
+def test_combo_sin_flecha_si_falla_generacion(app, monkeypatch):
+    from client.presentation.styles import theme
+
+    def boom(_c):
+        raise OSError("sin permisos")
+    monkeypatch.setattr(theme, "ruta_chevron", boom)
+    qss = theme.hoja_estilo()
+    assert "down-arrow" not in qss and "$" not in qss
+    assert "QComboBox::drop-down" in qss
+
+
+# ---------------------------------------------------------------- estado vacio multilinea
+def test_estado_vacio_altura_mensaje_largo(ventana):
+    largo = ("Este es un mensaje bastante largo que debe ocupar al menos tres lineas completas "
+             "dentro del ancho maximo del estado vacio sin quedar recortado por el layout, "
+             "incluso cuando incluye varias frases consecutivas de explicacion.")
+    e = EstadoVacio("∅", "Titulo", "corto")
+    h_corto = e._mensaje.height()
+    e.set_textos(mensaje=largo)
+    ventana.resize(800, 600)
+    e.setParent(ventana)
+    e.resize(600, 500)
+    e.show()
+    lbl = e._mensaje
+    assert e.mensaje == largo and e.titulo == "Titulo"
+    assert lbl.width() <= 360
+    assert lbl.height() >= 3 * lbl.fontMetrics().height()
+    assert lbl.height() > h_corto
+    # el layout debe respetar la altura: el label no se encoge por debajo de lo reservado
+    assert lbl.geometry().height() == lbl.height()
+
+
+def test_estado_vacio_set_textos_parcial(app):
+    e = EstadoVacio("!", "A", "B")
+    e.set_textos(titulo="Nuevo")
+    assert e.titulo == "Nuevo" and e.mensaje == "B"
+    e.set_textos(mensaje="Otro\ncon dos lineas")
+    assert e.titulo == "Nuevo" and e.mensaje == "Otro\ncon dos lineas"
+    assert e._mensaje.height() >= 2 * e._mensaje.fontMetrics().height()
+    e.set_textos()
+    assert e.titulo == "Nuevo"
+    assert EstadoVacio.sin_resultados().boton is None
 
 
 def test_tarjeta_resumen(app):

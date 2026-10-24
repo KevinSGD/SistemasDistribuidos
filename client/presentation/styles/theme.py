@@ -13,9 +13,12 @@ Notas de accesibilidad (contraste WCAG contra blanco/fondo):
 """
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from string import Template
 
-from PyQt6.QtGui import QColor, QFont
+from PyQt6.QtCore import QPointF, Qt
+from PyQt6.QtGui import QColor, QFont, QImage, QPainter, QPen, QPolygonF
 from PyQt6.QtWidgets import QApplication
 
 from shared.dinero import redondear
@@ -70,7 +73,63 @@ COLORES: dict[str, str] = {
     "deshabilitado_texto": "#9CA3AF",
 }
 
-#: nivel -> (color de texto, color de fondo)
+
+# --------------------------------------------------------------------------
+# Contraste WCAG
+# --------------------------------------------------------------------------
+def _canal_lineal(c: int) -> float:
+    s = c / 255
+    return s / 12.92 if s <= 0.03928 else ((s + 0.055) / 1.055) ** 2.4
+
+
+def luminancia(hex_color: str) -> float:
+    """Luminancia relativa WCAG de un '#RRGGBB'."""
+    h = hex_color.lstrip("#")
+    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    return 0.2126 * _canal_lineal(r) + 0.7152 * _canal_lineal(g) + 0.0722 * _canal_lineal(b)
+
+
+def razon_contraste(fg: str, bg: str) -> float:
+    """Razon de contraste WCAG (1..21) entre dos '#RRGGBB'."""
+    a, b = luminancia(fg), luminancia(bg)
+    claro, oscuro = max(a, b), min(a, b)
+    return (claro + 0.05) / (oscuro + 0.05)
+
+
+def oscurecer_hasta_contraste(fg: str, bg: str, minimo: float = 4.5) -> str:
+    """Oscurece ``fg`` (mezcla hacia negro, pasos de 1%) lo minimo para que su
+    contraste contra ``bg`` sea >= ``minimo``. Si ya cumple, lo devuelve igual."""
+    h = fg.lstrip("#")
+    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    for pct in range(0, 101):
+        f = 1 - pct / 100
+        cand = "#{:02X}{:02X}{:02X}".format(round(r * f), round(g * f), round(b * f))
+        if razon_contraste(cand, bg) >= minimo:
+            return cand
+    return "#000000"
+
+
+# Variantes de TEXTO con contraste AA (>= 4.5:1) sobre el fondo de su badge. Los hex
+# originales del documento (arriba) no se tocan; estas claves son solo para texto.
+COLORES["nivel_critico_texto_aa"] = oscurecer_hasta_contraste(
+    COLORES["nivel_critico"], COLORES["nivel_critico_fondo"])
+COLORES["nivel_alto_texto_aa"] = oscurecer_hasta_contraste(
+    COLORES["nivel_alto"], COLORES["nivel_alto_fondo"])
+COLORES["nivel_medio_texto_aa"] = oscurecer_hasta_contraste(
+    COLORES["nivel_medio"], COLORES["nivel_medio_fondo"])
+# Gris de motivo/precio tachado: AA incluso sobre el fondo gris mas oscuro de la UI.
+COLORES["texto_tenue_aa"] = oscurecer_hasta_contraste(
+    COLORES["texto_tenue"], COLORES["superficie_alt"])
+
+#: nivel -> (color de texto AA, color de fondo) usado por BadgeNivel
+COLOR_NIVEL_BADGE: dict[str, tuple[str, str]] = {
+    "critico": (COLORES["nivel_critico_texto_aa"], COLORES["nivel_critico_fondo"]),
+    "alto": (COLORES["nivel_alto_texto_aa"], COLORES["nivel_alto_fondo"]),
+    "medio": (COLORES["nivel_medio_texto_aa"], COLORES["nivel_medio_fondo"]),
+    "normal": (COLORES["nivel_normal"], COLORES["nivel_normal_fondo"]),
+}
+
+#: nivel -> (color de texto, color de fondo) con los hex originales del documento
 COLOR_NIVEL: dict[str, tuple[str, str]] = {
     "critico": (COLORES["nivel_critico"], COLORES["nivel_critico_fondo"]),
     "alto": (COLORES["nivel_alto"], COLORES["nivel_alto_fondo"]),
@@ -196,7 +255,11 @@ QLineEdit[error="true"] { border: 2px solid $peligro; padding: 5px 9px; }
 QLineEdit:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QComboBox:disabled {
     background: $deshabilitado_fondo; color: $deshabilitado_texto; border-color: $borde;
 }
-QComboBox::drop-down { border: none; width: 24px; }
+QComboBox::drop-down {
+    border: none; width: 24px;
+    subcontrol-origin: padding; subcontrol-position: center right;
+}
+$flecha_combo
 QComboBox QAbstractItemView {
     background: $superficie; color: $texto; border: 1px solid $borde_input;
     selection-background-color: $primario_fondo; selection-color: $primario_texto; outline: 0;
@@ -236,9 +299,61 @@ QMessageBox QPushButton { min-width: 84px; }
 )
 
 
+def _dir_cache_iconos() -> Path:
+    from platformdirs import user_cache_dir
+    return Path(user_cache_dir("InventarioApp")) / "iconos"
+
+
+def ruta_chevron(color_hex: str) -> Path:
+    """Genera (si no existe) un PNG 12x12 con un chevron hacia abajo del color dado y
+    devuelve su ruta. Nombre estable por color. Lanza OSError/RuntimeError si falla."""
+    h = color_hex.lstrip("#").upper()
+    carpeta = _dir_cache_iconos()
+    carpeta.mkdir(parents=True, exist_ok=True)
+    destino = carpeta / f"chevron_{h}.png"
+    if destino.exists() and destino.stat().st_size > 0:
+        return destino
+    img = QImage(12, 12, QImage.Format.Format_ARGB32)
+    img.fill(Qt.GlobalColor.transparent)
+    p = QPainter(img)
+    try:
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(QColor("#" + h), 1.8)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        p.setPen(pen)
+        p.drawPolyline(QPolygonF([QPointF(2.5, 4.0), QPointF(6.0, 7.5), QPointF(9.5, 4.0)]))
+    finally:
+        p.end()
+    tmp = destino.with_suffix(".tmp.png")
+    if not img.save(str(tmp), "PNG"):
+        raise RuntimeError("no se pudo guardar el chevron")
+    os.replace(tmp, destino)
+    return destino
+
+
+def _qss_flecha_combo() -> str:
+    """Reglas ``QComboBox::down-arrow`` por estado; cadena vacia si no se puede generar."""
+    try:
+        estados = [
+            ("", COLORES["texto_suave"]),
+            (":hover", COLORES["texto"]),
+            (":focus", COLORES["primario"]),
+            (":disabled", COLORES["deshabilitado_texto"]),
+        ]
+        reglas = []
+        for pseudo, col in estados:
+            ruta = ruta_chevron(col).as_posix()
+            reglas.append(
+                f'QComboBox::down-arrow{pseudo} {{ image: url("{ruta}"); width: 12px; height: 12px; }}')
+        return "\n".join(reglas)
+    except Exception:  # noqa: BLE001 - el combo debe funcionar sin flecha
+        return ""
+
+
 def hoja_estilo() -> str:
     """Hoja de estilo global resuelta con la paleta."""
-    return _QSS.substitute(fuente=FUENTE["css"], **COLORES)
+    return _QSS.substitute(fuente=FUENTE["css"], flecha_combo=_qss_flecha_combo(), **COLORES)
 
 
 def aplicar_tema(app: QApplication) -> None:

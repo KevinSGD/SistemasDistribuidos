@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import unicodedata
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import QRect, Qt, pyqtSignal
 from PyQt6.QtWidgets import QFrame, QLabel, QPushButton, QVBoxLayout, QWidget
 
-from ..styles.theme import COLOR_NIVEL, COLORES, fuente
+from ..styles.theme import COLOR_NIVEL, COLOR_NIVEL_BADGE, COLORES, PESO_BOLD, fuente
 from ..styles.theme import color as resolver_color
 
 _ETIQUETAS = {"critico": "Crítico", "alto": "Alto", "medio": "Medio", "normal": "Normal"}
@@ -29,7 +29,7 @@ class BadgeNivel(QLabel):
 
     def set_nivel(self, nivel: str) -> None:
         self.nivel = normalizar_nivel(nivel)
-        texto, fondo = COLOR_NIVEL[self.nivel]
+        texto, fondo = COLOR_NIVEL_BADGE[self.nivel]  # texto AA sobre el fondo del documento
         etiqueta = _ETIQUETAS[self.nivel]
         self.setText(etiqueta)
         self.setAccessibleName(f"Nivel de riesgo {etiqueta}")
@@ -90,6 +90,7 @@ class EstadoVacio(QWidget):
     opcionalmente, un boton de accion (p. ej. 'Reintentar')."""
 
     accion = pyqtSignal()
+    ANCHO_TEXTO = 360
 
     def __init__(self, icono_texto: str, titulo: str, mensaje: str,
                  texto_boton: str | None = None, parent=None, error: bool = False):
@@ -107,14 +108,16 @@ class EstadoVacio(QWidget):
         )
         self._titulo = QLabel(titulo, self)
         self._titulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._titulo.setWordWrap(True)
+        self._titulo.setFont(fuente(16, PESO_BOLD))
         self._titulo.setStyleSheet(f"color: {COLORES['texto']}; font-size: 16px; font-weight: 700;")
         self._mensaje = QLabel(mensaje, self)
         self._mensaje.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._mensaje.setWordWrap(True)
-        self._mensaje.setMaximumWidth(380)
+        self._mensaje.setFont(fuente(13))
         self._mensaje.setStyleSheet(f"color: {COLORES['texto_suave']}; font-size: 13px;")
         lay.addWidget(self._icono, 0, Qt.AlignmentFlag.AlignHCenter)
-        lay.addWidget(self._titulo)
+        lay.addWidget(self._titulo, 0, Qt.AlignmentFlag.AlignHCenter)
         lay.addWidget(self._mensaje, 0, Qt.AlignmentFlag.AlignHCenter)
         self._boton: QPushButton | None = None
         if texto_boton:
@@ -124,6 +127,35 @@ class EstadoVacio(QWidget):
             self._boton.clicked.connect(self.accion)
             lay.addSpacing(6)
             lay.addWidget(self._boton, 0, Qt.AlignmentFlag.AlignHCenter)
+        self._reservar_alturas()
+
+    # ---- API publica de textos
+    def set_textos(self, titulo: str | None = None, mensaje: str | None = None) -> None:
+        """Cambia titulo y/o mensaje (None = sin cambios) y recalcula la altura reservada."""
+        if titulo is not None:
+            self._titulo.setText(titulo)
+        if mensaje is not None:
+            self._mensaje.setText(mensaje)
+        self._reservar_alturas()
+
+    @property
+    def titulo(self) -> str:
+        return self._titulo.text()
+
+    @property
+    def mensaje(self) -> str:
+        return self._mensaje.text()
+
+    def _reservar_alturas(self) -> None:
+        """Fija ancho (<= ANCHO_TEXTO) y alto de cada label midiendo el texto con ajuste de
+        linea; sin esto el layout estrecha el label y recorta los mensajes multilinea."""
+        for lbl in (self._titulo, self._mensaje):
+            fm = lbl.fontMetrics()
+            caja = fm.boundingRect(QRect(0, 0, self.ANCHO_TEXTO, 10000),
+                                   Qt.TextFlag.TextWordWrap.value | Qt.AlignmentFlag.AlignCenter.value,
+                                   lbl.text())
+            lbl.setFixedSize(self.ANCHO_TEXTO, max(caja.height(), fm.height()) + 6)
+        self.updateGeometry()
 
     @classmethod
     def error_conexion(cls, parent=None) -> "EstadoVacio":
