@@ -21,6 +21,7 @@ CONFIG_POR_DEFECTO: dict[str, str] = {
     "direccion": "",
     "telefono": "",
     "iva_pct": "0",
+    "decimales_moneda": "0",
     "inactividad_segundos": "180",
     "aviso_segundos": "30",
     "sesion_maxima_minutos": "480",

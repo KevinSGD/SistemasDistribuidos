@@ -36,20 +36,21 @@ def linea(pid, cant):
 def test_compra_exitosa_valores_y_eventos(ventas, factory, usuarios, crear_producto, config,
                                           eventos):
     _, c1, _ = usuarios
-    p = crear_producto(precio=10.0, stock=20, venc=AHORA + timedelta(days=2))  # critico: 50%
-    q = crear_producto("Pan", 4.0, 10)
+    p = crear_producto(precio=10000.0, stock=20, venc=AHORA + timedelta(days=2))  # critico: 50%
+    q = crear_producto("Pan", 4000.0, 10)
     config.actualizar({"iva_pct": 19}, "admin")
     eventos.clear()
     f = ventas.comprar(c1, [linea(p.id, 2), linea(q.id, 1)], CLI,
-                       {"metodo": "efectivo", "efectivo_recibido": 50})
+                       {"metodo": "efectivo", "efectivo_recibido": 50000})
     assert f["numero"] == "FAC-000001"
-    # 2*5.00 + 1*4.00 = 14.00 ; iva 19% = 2.66 ; total 16.66
-    assert f["subtotal"] == 24.0 and f["ahorro"] == 10.0
-    assert f["iva"] == 2.66 and f["total"] == 16.66
-    assert f["efectivo_recibido"] == 50 and f["cambio"] == 33.34
+    # Pesos enteros (antes la prueba usaba 10,00/4,00 y centavos):
+    # 2*5.000 + 1*4.000 = 14.000 ; iva 19% = 2.660 ; total 16.660
+    assert f["subtotal"] == 24000 and f["ahorro"] == 10000
+    assert f["iva"] == 2660 and f["total"] == 16660
+    assert f["efectivo_recibido"] == 50000 and f["cambio"] == 33340
     it = f["items"][0]
     assert (it["precio_original"], it["descuento_pct"], it["precio_final"], it["subtotal"]) \
-        == (10.0, 50.0, 5.0, 10.0)
+        == (10000, 50.0, 5000, 10000)
     assert f["cliente"] == CLI and f["negocio"]["nombre_negocio"] == "Mi Negocio"
     assert stock(factory, p.id) == 18 and stock(factory, q.id) == 9
     ev = {(e["tipo"], e["payload"]["producto_id"]): e["payload"]["stock"] for e in eventos}
@@ -137,10 +138,10 @@ def test_validaciones_de_entrada(ventas, usuarios, crear_producto, items, pago):
 
 
 def test_efectivo_insuficiente_no_toca_stock(ventas, factory, usuarios, crear_producto):
-    p = crear_producto(precio=10.0, stock=5)
+    p = crear_producto(precio=10000.0, stock=5)
     with pytest.raises(EfectivoInsuficiente):
         ventas.comprar(usuarios[1], [linea(p.id, 2)], CLI,
-                       {"metodo": "efectivo", "efectivo_recibido": 19.99})
+                       {"metodo": "efectivo", "efectivo_recibido": 19999})
     assert stock(factory, p.id) == 5 and n_facturas(factory) == (0, 0)
 
 
@@ -194,3 +195,31 @@ def test_comprador_no_ve_facturas_ajenas(ventas, usuarios, crear_producto):
     assert len(ventas.listar_facturas(adm, "admin")) == 2
     with pytest.raises(RolNoPermitido):
         ventas.listar_facturas(c1, None)
+
+
+def test_factura_pesos_enteros_iva_19_y_total_igual_base_mas_iva(
+        ventas, usuarios, crear_producto, config):
+    config.actualizar({"iva_pct": 19}, "admin")
+    p = crear_producto(precio=28320.0, stock=10)
+    f = ventas.comprar(usuarios[1], [linea(p.id, 1)], CLI,
+                       {"metodo": "efectivo", "efectivo_recibido": 40000})
+    assert f["iva"] == 5381 and f["total"] == 33701 and f["cambio"] == 6299
+    for v in (f["subtotal"], f["ahorro"], f["iva"], f["total"], f["efectivo_recibido"],
+              f["cambio"], f["items"][0]["precio_final"], f["items"][0]["subtotal"]):
+        assert float(v).is_integer()
+    assert (f["subtotal"] - f["ahorro"]) + f["iva"] == f["total"]
+
+
+def test_oferta_y_factura_coinciden_en_precio_por_unidad(
+        ventas, riesgo, usuarios, crear_producto, config):
+    # 4.500 con 15 % y un caso con fraccion (4.990 con 15 % = 4.241,5 -> 4.242)
+    config.actualizar({"descuento_critico": 15}, "admin")
+    a = crear_producto("A", 4500.0, 10, venc=AHORA + timedelta(days=2))
+    b = crear_producto("B", 4990.0, 10, venc=AHORA + timedelta(days=2))
+    ofertas = {o["producto_id"]: o for o in riesgo.ofertas("comprador")}
+    assert ofertas[a.id]["precio_final"] == 3825 and ofertas[b.id]["precio_final"] == 4242
+    f = ventas.comprar(usuarios[1], [linea(a.id, 3), linea(b.id, 2)], CLI, TARJ)
+    for it in f["items"]:
+        assert it["precio_final"] == ofertas[it["producto_id"]]["precio_final"]
+        assert it["subtotal"] == it["precio_final"] * it["cantidad"]
+    assert f["total"] == 3825 * 3 + 4242 * 2

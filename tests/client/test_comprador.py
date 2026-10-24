@@ -100,7 +100,7 @@ def test_carrito_mas_menos_y_eliminacion():
 
 
 def test_carrito_totales_y_ahorro():
-    c = Carrito()
+    c = Carrito(decimales=2)          # centavos solo cuando se piden explicitamente
     c.agregar(oferta(1, stock=5, original=1000, final=500, desc=50))
     c.agregar(oferta(1, stock=5, original=1000, final=500, desc=50))
     c.agregar(oferta(2, "Pan", stock=5, original=2500.5, final=2000.4, desc=20))
@@ -148,8 +148,17 @@ def test_carrito_eventos_y_rechazo_servidor():
 @pytest.mark.parametrize("txt,esperado", [
     ("25000", 25000.0), ("25.000", 25000.0), ("25.000,50", 25000.5), ("25,000.50", 25000.5),
     ("25,5", 25.5), ("$ 1.234.567", 1234567.0), ("10.5", 10.5), ("", None), ("abc", None), (",", None)])
-def test_parsear_monto(txt, esperado):
-    assert parsear_monto(txt) == esperado
+def test_parsear_monto_con_centavos_explicitos(txt, esperado):
+    # El criterio por defecto es 0 decimales; la capacidad de centavos se prueba con decimales=2.
+    assert parsear_monto(txt, 2) == esperado
+
+
+@pytest.mark.parametrize("txt,esperado", [
+    ("25000", 25000), ("25.000", 25000), ("$ 1.234.567", 1234567), ("25.000,50", 25001),
+    ("25,5", 26), ("10.5", 11), ("10.4", 10), ("", None), ("abc", None)])
+def test_parsear_monto_pesos_enteros(txt, esperado):
+    r = parsear_monto(txt)
+    assert r == esperado and (r is None or isinstance(r, int))
 
 
 def test_validaciones_cliente():
@@ -165,6 +174,33 @@ def test_vista_previa_iva_sobre_precio_con_descuento():
     c.agregar(oferta(1, stock=5, original=1000, final=500, desc=50))
     v = calcular_vista_previa(c.lineas, 19)
     assert v == {"subtotal": 1000.0, "ahorro": 500.0, "base": 500.0, "iva": 95.0, "total": 595.0}
+
+
+def test_carrito_pesos_enteros_redondea_half_up_como_el_servidor():
+    c = Carrito()                                       # decimales_moneda = 0
+    c.agregar(oferta(1, stock=9, original=1001, final=500.5, desc=50))
+    c.cambiar(1, +1)
+    assert c.linea(1).subtotal_final == 1001 and isinstance(c.total, int)
+    c2 = Carrito()
+    c2.agregar(oferta(2, "Pan", stock=9, original=5, final=2.5, desc=50))
+    assert c2.total == 3 and c2.subtotal == 5 and c2.ahorro == 2     # 2,5 -> 3 (no 2)
+
+
+def test_vista_previa_iva_19_de_28320_coincide_con_servidor():
+    c = Carrito()
+    c.agregar(oferta(1, stock=5, original=28320, final=28320, desc=0))
+    v = calcular_vista_previa(c.lineas, 19)
+    assert v == {"subtotal": 28320, "ahorro": 0, "base": 28320, "iva": 5381, "total": 33701}
+    assert v["base"] + v["iva"] == v["total"]
+    assert all(isinstance(x, int) for x in v.values())
+
+
+def test_vista_previa_4500_con_15_por_ciento_y_cantidad():
+    c = Carrito()
+    for _ in range(3):
+        c.agregar(oferta(1, stock=9, original=4500, final=3825, desc=15))
+    v = calcular_vista_previa(c.lineas, 19)
+    assert v["base"] == 11475 and v["ahorro"] == 2025 and v["iva"] == 2180 and v["total"] == 13655
 
 
 # -- catalogo ------------------------------------------------------------------------------
@@ -304,8 +340,8 @@ def test_confirmar_deshabilitado_con_efectivo_insuficiente_muestra_faltante(comp
     d.input_monto.setText("3000")
     assert not d.btn_confirmar.isEnabled()
     assert d.lbl_faltante.text() == "Faltan $2.000 para completar el pago"
-    d.input_monto.setText("4999,50")
-    assert d.lbl_faltante.text() == "Faltan $0,50 para completar el pago"
+    d.input_monto.setText("4999")
+    assert d.lbl_faltante.text() == "Faltan $1 para completar el pago"        # pesos enteros
     d.input_monto.setText("5.000")
     assert d.btn_confirmar.isEnabled() and d.lbl_cambio.text() == "$0" and not d.lbl_faltante.text()
     d.input_monto.setText("10000")
@@ -378,6 +414,40 @@ def test_flujo_completo_efectivo_factura_pdf_y_stock(comprador, espera, api_admi
         assert v.dialogo_factura is None and len(v.carrito) == 0
     finally:
         api_admin.actualizar_config({"iva_pct": 0})
+
+
+def test_vista_previa_catalogo_y_pago_coinciden_con_la_factura_del_servidor(
+        comprador, espera, api_admin, sin_visor):
+    # 4.990 con 15 % = 4.241,5 -> 4.242 (half-up); 3 uds: base 12.726, IVA 19 % = 2.417,94 -> 2.418
+    api_admin.actualizar_config({"iva_pct": 19, "descuento_critico": 15})
+    try:
+        p = crear_oferta(api_admin, stock=10, precio=4990, nombre=f"Jugo {uuid.uuid4().hex[:5]}")
+        v = comprador.ventana
+        v._cargar_config()
+        v.cargar()
+        esperar_ofertas(v, espera, p)
+        assert espera(lambda: v.config.iva_pct == 19) and v.config.decimales_moneda == 0
+        t = v.tarjetas[p.id]
+        assert t.lbl_final.text() == "$4.242" and t.lbl_original.text() == "$4.990"
+        for _ in range(3):
+            t.btn_agregar.click()
+        v.panel_carrito.btn_pagar.click()
+        d = v.dialogo_pago
+        assert d.vista == {"subtotal": 14970, "ahorro": 2244, "base": 12726, "iva": 2418,
+                           "total": 15144}
+        assert d.lbl_total.text() == "$15.144"
+        llenar_pago(d)
+        d.input_monto.setText("20000")
+        d.btn_confirmar.click()
+        assert espera(lambda: v.dialogo_factura is not None)
+        f = v.dialogo_factura.factura
+        assert f.items[0].precio_final == 4242 and f.items[0].subtotal == 12726
+        assert (f.subtotal, f.ahorro, f.iva, f.total, f.cambio) == (
+            d.vista["subtotal"], d.vista["ahorro"], d.vista["iva"], d.vista["total"], 4856)
+        assert f.subtotal - f.ahorro + f.iva == f.total
+        v.dialogo_factura.btn_cerrar.click()
+    finally:
+        api_admin.actualizar_config({"iva_pct": 0, "descuento_critico": 50})
 
 
 def test_pago_tarjeta_simulada_sin_numeros(comprador, espera, api_admin, api_comprador):
@@ -539,8 +609,8 @@ def factura_demo(**extra) -> dict:
                     "precio_original": 4200, "descuento_pct": 30, "precio_final": 2940, "subtotal": 5880},
                    {"producto_id": 2, "nombre": "Pan tajado ñoño", "cantidad": 1,
                     "precio_original": 6900, "descuento_pct": 0, "precio_final": 6900, "subtotal": 6900}],
-         "subtotal": 15300, "ahorro": 2520, "iva": 2428.2, "total": 15208.2,
-         "metodo_pago": "efectivo", "efectivo_recibido": 20000, "cambio": 4791.8}
+         "subtotal": 15300, "ahorro": 2520, "iva": 2428, "total": 15208,
+         "metodo_pago": "efectivo", "efectivo_recibido": 20000, "cambio": 4792}
     d.update(extra)
     return d
 
@@ -562,8 +632,8 @@ def test_pdf_mismos_datos_que_el_widget_y_soporta_tildes(qapp, tmp_path):
     for fila in m["filas"]:
         esperado |= set(fila)
     assert esperado <= textos, esperado - textos
-    assert m["cliente"] == "José Ángel Núñez  (1020304050)" and "$2.428,20" in str(m["totales"])
-    assert m["total"] == "$15.208,20" and m["pago"]["cambio"] == "$4.791,80"
+    assert m["cliente"] == "José Ángel Núñez  (1020304050)" and "$2.428" in str(m["totales"])
+    assert m["total"] == "$15.208" and m["pago"]["cambio"] == "$4.792"
 
 
 def test_pdf_tarjeta_sin_caja_de_pago_y_nombre_seguro(qapp, tmp_path):

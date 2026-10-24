@@ -110,6 +110,21 @@ def test_vencido_y_sobrestock_sin_descuento():
 
 
 def test_politica_parametrizable_y_redondeo():
-    pol = PoliticaRiesgo(dias_critico=1, dias_alerta=2, descuento_alto=33.0)
+    pol = PoliticaRiesgo(dias_critico=1, dias_alerta=2, descuento_alto=33.0,
+                         decimales_moneda=2)
     e = evaluar_producto(prod(en_dias(2), precio=10.0), pol, AHORA)
     assert e.nivel == N.ALTO and e.precio_final == 6.7
+
+
+def test_precio_final_pesos_enteros_por_defecto():
+    pol = PoliticaRiesgo(dias_critico=1, dias_alerta=2, descuento_alto=33.0)
+    e = evaluar_producto(prod(en_dias(2), precio=10.0), pol, AHORA)
+    assert e.precio_final == 7 and isinstance(e.precio_final, int)
+
+
+def test_precio_final_4500_con_15_por_ciento():
+    # 4.500 * 0,85 = 3.825 exacto; 3.825 * 0,9 = 3.442,5 -> 3.443 (half up)
+    pol = PoliticaRiesgo(dias_critico=1, dias_alerta=2, descuento_alto=15.0)
+    assert evaluar_producto(prod(en_dias(2), precio=4500.0), pol, AHORA).precio_final == 3825
+    pol = PoliticaRiesgo(dias_critico=1, dias_alerta=2, descuento_alto=10.0)
+    assert evaluar_producto(prod(en_dias(2), precio=3825.0), pol, AHORA).precio_final == 3443

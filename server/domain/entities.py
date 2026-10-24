@@ -34,6 +34,7 @@ class PoliticaRiesgo:
     descuento_alto: float = 30.0
     descuento_medio: float = 15.0
     descuento_sobrestock: float = 10.0
+    decimales_moneda: int = 0   # 0 = pesos enteros
 
 
 @dataclass(frozen=True)

@@ -77,3 +77,13 @@ def test_politica_riesgo_refleja_config(config):
     config.actualizar({"dias_alerta_vencimiento": 10, "descuento_critico": 60}, "admin")
     p = config.politica_riesgo()
     assert p.dias_alerta == 10 and p.descuento_critico == 60.0 and p.dias_critico == 3
+
+
+def test_decimales_moneda_defecto_publico_y_rango(config):
+    assert config.obtener_publica()["decimales_moneda"] == 0
+    assert config.politica_riesgo().decimales_moneda == 0
+    config.actualizar({"decimales_moneda": 2}, "admin")
+    assert config.politica_riesgo().decimales_moneda == 2
+    for malo in (-1, 3, 1.5, "x"):
+        with pytest.raises(ErrorValidacion):
+            config.actualizar({"decimales_moneda": malo}, "admin")

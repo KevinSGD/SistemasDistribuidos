@@ -256,6 +256,7 @@ def test_config_defaults_y_seed(s):
         "descuento_critico", "descuento_alto", "descuento_medio", "descuento_sobrestock",
         "intervalo_escaneo_segundos", "nombre_negocio", "nit", "direccion", "telefono",
         "iva_pct", "inactividad_segundos", "aviso_segundos", "sesion_maxima_minutos",
+        "decimales_moneda",
     }
     assert set(CONFIG_POR_DEFECTO) == esperadas
     c = ConfigRepo(s)

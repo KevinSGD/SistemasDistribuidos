@@ -2,6 +2,7 @@
 from dataclasses import dataclass, field
 from typing import Sequence
 
+from .dinero import dec, redondear
 from .errors import CantidadInvalida, EfectivoInsuficiente
 from .ventas import LineaCalculada
 
@@ -18,27 +19,27 @@ class TotalesCompra:
     cambio: float | None = None
 
 
-def calcular_totales(lineas: Sequence[LineaCalculada], decimales: int = 2) -> TotalesCompra:
+def calcular_totales(lineas: Sequence[LineaCalculada], decimales: int = 0) -> TotalesCompra:
     if not lineas:
         raise CantidadInvalida("La compra no tiene líneas")
-    sub = round(sum(l.precio_original * l.cantidad for l in lineas), decimales)
-    ahorro = round(sum(l.ahorro for l in lineas), decimales)
-    base = round(sum(l.subtotal for l in lineas), decimales)
+    sub = redondear(sum(l.precio_original * l.cantidad for l in lineas), decimales)
+    ahorro = redondear(sum(l.ahorro for l in lineas), decimales)
+    base = redondear(sum(l.subtotal for l in lineas), decimales)
     bases: dict[float, float] = {}
     for l in lineas:
         bases[l.tasa_iva] = bases.get(l.tasa_iva, 0.0) + l.subtotal
-    iva_por_tasa = {t: round(b * t / 100, decimales) for t, b in sorted(bases.items()) if t > 0}
-    iva = round(sum(iva_por_tasa.values()), decimales)
-    return TotalesCompra(sub, ahorro, base, iva_por_tasa, iva, round(base + iva, decimales))
+    iva_por_tasa = {t: redondear(dec(b) * dec(t) / 100, decimales) for t, b in sorted(bases.items()) if t > 0}
+    iva = redondear(sum(iva_por_tasa.values()), decimales)
+    return TotalesCompra(sub, ahorro, base, iva_por_tasa, iva, redondear(base + iva, decimales))
 
 
-def calcular_pago(totales: TotalesCompra, efectivo: float, decimales: int = 2) -> TotalesCompra:
-    efectivo = round(efectivo, decimales)
+def calcular_pago(totales: TotalesCompra, efectivo: float, decimales: int = 0) -> TotalesCompra:
+    efectivo = redondear(efectivo, decimales)
     if efectivo < totales.total:
         raise EfectivoInsuficiente(
             "El efectivo recibido es menor que el total",
             {"total": totales.total, "efectivo": efectivo,
-             "faltante": round(totales.total - efectivo, decimales)})
+             "faltante": redondear(totales.total - efectivo, decimales)})
     return TotalesCompra(totales.subtotal_sin_descuento, totales.ahorro, totales.base,
                          totales.iva_por_tasa, totales.iva, totales.total,
-                         efectivo, round(efectivo - totales.total, decimales))
+                         efectivo, redondear(efectivo - totales.total, decimales))

@@ -23,7 +23,7 @@ def test_iva_desglosado():
 
 
 def test_iva_sobre_precio_con_descuento():
-    t = calcular_totales([linea(100, 70, 1, 19.0)])
+    t = calcular_totales([linea(100, 70, 1, 19.0)], decimales=2)  # centavos: capacidad explicita
     assert t.iva == 13.3 and t.total == 83.3 and t.ahorro == 30
 
 
@@ -43,10 +43,28 @@ def test_efectivo_exacto():
 
 def test_efectivo_insuficiente():
     with pytest.raises(EfectivoInsuficiente) as ei:
-        calcular_pago(calcular_totales([linea(100, 100, 1)]), 99.5)
+        calcular_pago(calcular_totales([linea(100, 100, 1)], decimales=2), 99.5, decimales=2)
     assert ei.value.detalle["faltante"] == 0.5
+
+
+def test_efectivo_insuficiente_pesos_enteros():
+    with pytest.raises(EfectivoInsuficiente) as ei:
+        calcular_pago(calcular_totales([linea(100, 100, 1)]), 99.4)
+    assert ei.value.detalle["faltante"] == 1 and isinstance(ei.value.detalle["faltante"], int)
 
 
 def test_compra_vacia():
     with pytest.raises(CantidadInvalida):
         calcular_totales([])
+
+
+def test_iva_19_de_28320_pesos_enteros():
+    # 28.320 * 19 % = 5.380,8 -> 5.381 (mitad hacia arriba, sin centavos)
+    t = calcular_totales([linea(28320, 28320, 1, 19.0)])
+    assert t.iva == 5381 and t.total == 33701 and t.base + t.iva == t.total
+    assert all(isinstance(v, int) for v in (t.subtotal_sin_descuento, t.ahorro, t.base, t.iva, t.total))
+
+
+def test_iva_mitad_hacia_arriba_no_al_par():
+    # 50 * 5 % = 2,5 -> 3 (round() de Python daria 2)
+    assert calcular_totales([linea(50, 50, 1, 5.0)]).iva == 3

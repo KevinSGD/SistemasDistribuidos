@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from .entities import EvaluacionRiesgo, ProductoDominio
+from .dinero import redondear
 from .errors import CantidadInvalida, ProductoInactivo, ProductoVencido, StockInsuficiente
 from .riesgo import esta_vencido
 
@@ -43,15 +44,15 @@ def validar_linea(producto: ProductoDominio, cantidad: int, ahora: datetime) -> 
 
 def calcular_linea(producto: ProductoDominio, cantidad: int,
                    evaluacion: EvaluacionRiesgo, tasa_iva: float = 0.0,
-                   decimales: int = 2) -> LineaCalculada:
+                   decimales: int = 0) -> LineaCalculada:
     """El precio unitario final se redondea primero; subtotal y ahorro derivan de el."""
-    unitario = round(evaluacion.precio_final, decimales)
-    original = round(evaluacion.precio_original, decimales)
+    unitario = redondear(evaluacion.precio_final, decimales)
+    original = redondear(evaluacion.precio_original, decimales)
     return LineaCalculada(
         producto_id=producto.id, nombre=producto.nombre, cantidad=cantidad,
         precio_original=original, descuento=evaluacion.descuento,
         precio_unitario=unitario,
-        subtotal=round(unitario * cantidad, decimales),
-        ahorro=round((original - unitario) * cantidad, decimales),
+        subtotal=redondear(unitario * cantidad, decimales),
+        ahorro=redondear((original - unitario) * cantidad, decimales),
         tasa_iva=tasa_iva,
     )

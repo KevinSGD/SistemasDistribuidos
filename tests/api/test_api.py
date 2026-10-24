@@ -91,12 +91,28 @@ def test_crud_productos_y_riesgo(client, admin, crear_producto):
     esc = client.post(f"{B}/riesgo/escaneo", headers=h).json()
     assert esc["evaluados"] == 1 and esc["descuentos_aplicados"]
     ofertas = client.get(f"{B}/ofertas", headers=h).json()
-    assert ofertas[0]["descuento"] == 50.0 and ofertas[0]["precio_final"] == 6.25
+    assert ofertas[0]["descuento"] == 50.0 and ofertas[0]["precio_final"] == 6  # 12,5 * 50 % = 6,25 -> pesos enteros
     assert client.get(f"{B}/riesgo/resumen", headers=h).json()["total_activos"] == 1
     assert "critico" in client.get(f"{B}/riesgo/alertas", headers=h).json()
     assert client.delete(f"{B}/productos/{p['id']}", headers=h).status_code == 204
     assert client.get(f"{B}/productos", headers=h).json() == []
     assert len(client.get(f"{B}/productos?activos=false", headers=h).json()) == 1
+
+
+def test_config_publica_incluye_decimales_moneda(client, comprador):
+    assert client.get(f"{B}/config/publica", headers=comprador[0]).json()["decimales_moneda"] == 0
+
+
+def test_compra_iva_19_devuelve_montos_enteros(client, admin, comprador, crear_producto):
+    assert client.put(f"{B}/config", json={"iva_pct": 19}, headers=admin[0]).status_code == 200
+    p = crear_producto(precio_base=28320, stock=5)
+    r = client.post(f"{B}/compras", json=compra(p["id"], 1, 40000), headers=comprador[0])
+    assert r.status_code == 201, r.text
+    f = r.json()
+    assert (f["iva"], f["total"], f["cambio"]) == (5381, 33701, 6299)
+    assert f["subtotal"] - f["ahorro"] + f["iva"] == f["total"]
+    for v in (f["subtotal"], f["ahorro"], f["iva"], f["total"], f["efectivo_recibido"], f["cambio"]):
+        assert float(v).is_integer()
 
 
 # -- compras --------------------------------------------------------------------------------

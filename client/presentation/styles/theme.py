@@ -18,6 +18,8 @@ from string import Template
 from PyQt6.QtGui import QColor, QFont
 from PyQt6.QtWidgets import QApplication
 
+from shared.dinero import redondear
+
 # --------------------------------------------------------------------------
 # Paleta
 # --------------------------------------------------------------------------
@@ -119,22 +121,24 @@ def qcolor(nombre_o_hex: str, alfa: int = 255) -> QColor:
 # --------------------------------------------------------------------------
 # Formato
 # --------------------------------------------------------------------------
-def fmt_moneda(valor: float | int, moneda: str = "$") -> str:
+def fmt_moneda(valor: float | int, moneda: str = "$", decimales: int = 0) -> str:
     """Formatea dinero estilo es-CO: miles con '.', decimales con ','.
 
-    Regla: sin decimales si ``moneda`` es "COP" o si el valor es entero
-    (p. ej. 1234.0); en otro caso 2 decimales. Simbolo de una sola letra
-    pegado ("$1.234"); codigos largos con espacio ("COP 1.234").
-    Negativos: "-$1.234".
+    ``decimales`` (por defecto 0, pesos enteros) es el ``decimales_moneda`` de la configuracion.
+    Con 0 jamas se muestran decimales, aunque el valor traiga fraccion (se redondea mitad hacia
+    arriba, igual que el servidor). Con 1-2 se muestran exactamente esos decimales, salvo que la
+    moneda sea "COP" (siempre entero). Simbolo de una sola letra pegado ("$1.234"); codigos
+    largos con espacio ("COP 1.234"). Negativos: "-$1.234".
     """
     try:
         v = float(valor)
     except (TypeError, ValueError):
         v = 0.0
-    sin_decimales = moneda.upper() == "COP" or round(v, 2) == int(round(v, 2))
-    texto = f"{abs(v):,.0f}" if sin_decimales else f"{abs(v):,.2f}"
+    n = 0 if moneda.upper() == "COP" else max(0, min(int(decimales or 0), 2))
+    r = redondear(abs(v), n)
+    texto = f"{r:,.{n}f}"
     # en-US -> es-CO: intercambiar separadores
-    texto = texto.replace(",", "\0").replace(".", ",").replace("\0", ".")
+    texto = texto.replace(",", "\x00").replace(".", ",").replace("\x00", ".")
     prefijo = moneda if len(moneda) <= 1 else moneda + " "
     signo = "-" if v < 0 and any(c not in "0.," for c in texto) else ""
     return f"{signo}{prefijo}{texto}"

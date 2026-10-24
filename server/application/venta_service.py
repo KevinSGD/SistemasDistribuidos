@@ -87,6 +87,7 @@ class VentaService:
         cfg = self._config.valores()
         politica = self._config.politica_riesgo()
         tasa = float(cfg["iva_pct"])
+        dec = politica.decimales_moneda
         ahora = self._reloj()
         cambiadas: list[int] = []
 
@@ -99,9 +100,9 @@ class VentaService:
                     raise NoEncontrado("Producto no encontrado", {"producto_id": pid})
                 validar_linea(p, cant, ahora)
                 ev = evaluar_producto(p, politica, ahora)
-                calculadas.append(calcular_linea(p, cant, ev, tasa))
-            totales = calcular_totales(calculadas)
-            totales = calcular_pago(totales, float(efectivo)) if metodo == EFECTIVO else totales
+                calculadas.append(calcular_linea(p, cant, ev, tasa, dec))
+            totales = calcular_totales(calculadas, dec)
+            totales = calcular_pago(totales, float(efectivo), dec) if metodo == EFECTIVO else totales
 
             for l in calculadas:      # el descuento condicional es la defensa real anti-sobreventa
                 if not prod.descontar_stock_atomico(l.producto_id, l.cantidad):

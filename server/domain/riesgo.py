@@ -1,6 +1,7 @@
 """Reglas de riesgo (RF-08/RF-09). Funciones puras: sin BD, sin reloj global."""
 from datetime import datetime
 
+from .dinero import dec, redondear
 from .entities import EvaluacionRiesgo, NivelRiesgo, PoliticaRiesgo, ProductoDominio
 
 _ORDEN = {NivelRiesgo.NORMAL: 0, NivelRiesgo.MEDIO: 1, NivelRiesgo.ALTO: 2, NivelRiesgo.CRITICO: 3}
@@ -56,7 +57,8 @@ def evaluar_producto(p: ProductoDominio, politica: PoliticaRiesgo,
     motivo = " | ".join(m for m in (m_v, m_s) if m) or "Sin riesgo"
     return EvaluacionRiesgo(
         producto_id=p.id, nivel=nivel, motivo=motivo, descuento=descuento,
-        precio_original=p.precio_base,
-        precio_final=round(p.precio_base * (1 - descuento / 100), 2),
+        precio_original=redondear(p.precio_base, politica.decimales_moneda),
+        precio_final=redondear(dec(p.precio_base) * (1 - dec(descuento) / 100),
+                              politica.decimales_moneda),
         dias_para_vencer=dias_para_vencer(p, ahora), vencido=vencido,
     )

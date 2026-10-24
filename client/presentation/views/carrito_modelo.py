@@ -8,14 +8,17 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any, Iterable
 
+from shared.dinero import redondear
+
 TIPO_NO_DISPONIBLE = "no_disponible"
 TIPO_STOCK_REDUCIDO = "stock_reducido"
 TIPO_PRECIO = "precio_cambiado"
 TIPO_RECUPERADO = "disponible_de_nuevo"
 
 
-def r2(valor: float) -> float:
-    return round(float(valor) + 0.0, 2)
+def r2(valor: float, decimales: int = 0) -> float:
+    """Redondeo monetario del servidor (mitad hacia arriba). Con 0 decimales devuelve entero."""
+    return redondear(valor, decimales)
 
 
 @dataclass
@@ -31,20 +34,21 @@ class LineaCarrito:
     motivo: str = ""
     nivel: str = "normal"
     disponible: bool = True
+    decimales: int = 0                        # decimales_moneda de la configuracion publica
     precio_anterior: float | None = None      # precio final previo, si cambio y no se reconocio
     cantidad_anterior: int | None = None      # cantidad previa, si se recorto por stock
 
     @property
     def subtotal_original(self) -> float:
-        return r2(self.precio_original * self.cantidad)
+        return r2(self.precio_original * self.cantidad, self.decimales)
 
     @property
     def subtotal_final(self) -> float:
-        return r2(self.precio_final * self.cantidad)
+        return r2(self.precio_final * self.cantidad, self.decimales)
 
     @property
     def ahorro(self) -> float:
-        return r2(self.subtotal_original - self.subtotal_final)
+        return r2(self.subtotal_original - self.subtotal_final, self.decimales)
 
     @property
     def con_aviso(self) -> bool:
@@ -86,8 +90,19 @@ def _campo(o: Any, nombre: str, defecto=None):
 class Carrito:
     """Orden de insercion estable. Nunca permite cantidad > stock conocido."""
 
-    def __init__(self) -> None:
+    def __init__(self, decimales: int = 0) -> None:
         self._lineas: dict[int, LineaCarrito] = {}
+        self._decimales = int(decimales)
+
+    @property
+    def decimales(self) -> int:
+        return self._decimales
+
+    @decimales.setter
+    def decimales(self, valor: int) -> None:
+        self._decimales = int(valor)
+        for l in self._lineas.values():
+            l.decimales = self._decimales
 
     # -- consulta -------------------------------------------------------------------------
     def __len__(self) -> int:
@@ -114,16 +129,16 @@ class Carrito:
     @property
     def subtotal(self) -> float:
         """Suma a precio original (sin descuento)."""
-        return r2(sum(l.subtotal_original for l in self._lineas.values()))
+        return r2(sum(l.subtotal_original for l in self._lineas.values()), self._decimales)
 
     @property
     def total(self) -> float:
         """Suma a precio con descuento, antes de IVA."""
-        return r2(sum(l.subtotal_final for l in self._lineas.values()))
+        return r2(sum(l.subtotal_final for l in self._lineas.values()), self._decimales)
 
     @property
     def ahorro(self) -> float:
-        return r2(self.subtotal - self.total)
+        return r2(self.subtotal - self.total, self._decimales)
 
     @property
     def hay_problemas(self) -> bool:
@@ -156,6 +171,7 @@ class Carrito:
                 precio_original=float(_campo(oferta, "precio_original", 0)),
                 precio_final=float(_campo(oferta, "precio_final", 0)),
                 descuento=float(_campo(oferta, "descuento", 0)), stock=stock, cantidad=1,
+                decimales=self._decimales,
                 motivo=_campo(oferta, "motivo", ""), nivel=_campo(oferta, "nivel", "normal"))
             return Resultado(True)
         self._copiar_datos(l, oferta)          # la tarjeta trae lo mas reciente

@@ -40,7 +40,7 @@ class TarjetaOferta(QFrame):
 
     agregar = pyqtSignal(int)
 
-    def __init__(self, oferta: ItemRiesgo, moneda: str = "$", parent=None):
+    def __init__(self, oferta: ItemRiesgo, moneda: str = "$", parent=None, decimales: int = 0):
         super().__init__(parent)
         self.oferta = oferta
         self.producto_id = oferta.producto_id
@@ -92,11 +92,11 @@ class TarjetaOferta(QFrame):
         self.lbl_descuento.setStyleSheet(
             f"color: {COLORES['descuento_texto']}; background: {COLORES['primario_fondo']};"
             " font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 9px; border: none;")
-        self.lbl_original = QLabel(fmt_moneda(oferta.precio_original, moneda))
+        self.lbl_original = QLabel(fmt_moneda(oferta.precio_original, moneda, decimales))
         self.lbl_original.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.lbl_original.setStyleSheet(f"font-size: 12px; color: {COLORES['texto_tenue']};"
                                         " text-decoration: line-through; border: none; background: transparent;")
-        self.lbl_final = QLabel(fmt_moneda(oferta.precio_final, moneda))
+        self.lbl_final = QLabel(fmt_moneda(oferta.precio_final, moneda, decimales))
         self.lbl_final.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.lbl_final.setStyleSheet(f"font-size: 18px; font-weight: 700; color: {COLORES['exito_texto']};"
                                      " border: none; background: transparent;")
@@ -270,6 +270,10 @@ class BuyerWindow(QMainWindow):
     def moneda(self) -> str:
         return self.config.moneda or "$"
 
+    @property
+    def decimales(self) -> int:
+        return int(getattr(self.config, "decimales_moneda", 0) or 0)
+
     def _actividad(self) -> None:
         self.ctx.marcar_actividad_vista()
 
@@ -298,9 +302,10 @@ class BuyerWindow(QMainWindow):
             return
 
         def ok(cfg: ConfigPublicaOut) -> None:
-            cambio = cfg.moneda != self.config.moneda
+            cambio = (cfg.moneda != self.config.moneda
+                      or cfg.decimales_moneda != self.config.decimales_moneda)
             self.config = cfg
-            self.panel_carrito.configurar(cfg.moneda, cfg.iva_pct)
+            self.panel_carrito.configurar(cfg.moneda, cfg.iva_pct, cfg.decimales_moneda)
             if cambio and self._cargado:
                 self._reconstruir(forzar=True)
         self.ctx.ejecutar(api.config_publica, ok, lambda e: None, self)
@@ -409,7 +414,7 @@ class BuyerWindow(QMainWindow):
                 w.deleteLater()
         self.tarjetas.clear()
         for o in vis:
-            t = TarjetaOferta(o, self.moneda)
+            t = TarjetaOferta(o, self.moneda, decimales=self.decimales)
             t.agregar.connect(self._agregar)
             self.tarjetas[o.producto_id] = t
             self._lista_lay.addWidget(t)
@@ -497,7 +502,8 @@ class BuyerWindow(QMainWindow):
             return
         self.carrito.reconocer()
         self.panel_carrito.refrescar()
-        dlg = PagoDialog(self.ctx, self.carrito.snapshot(), self.moneda, self.config.iva_pct, self)
+        dlg = PagoDialog(self.ctx, self.carrito.snapshot(), self.moneda, self.config.iva_pct,
+                         self.decimales, self)
         dlg.compra_exitosa.connect(self._compra_ok)
         dlg.pedido_rechazado.connect(self._compra_rechazada)
         dlg.finished.connect(self._pago_cerrado)

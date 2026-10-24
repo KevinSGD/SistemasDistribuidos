@@ -65,7 +65,7 @@ class FilaCarrito(QFrame):
         lay.addLayout(top)
 
         pct = f" · -{linea.descuento:g}%" if linea.descuento else ""
-        unit = QLabel(f"{fmt_moneda(linea.precio_final, moneda)} c/u{pct}")
+        unit = QLabel(f"{fmt_moneda(linea.precio_final, moneda, linea.decimales)} c/u{pct}")
         unit.setStyleSheet(f"font-size: 11px; color: {COLORES['texto_suave']};"
                            " border: none; background: transparent;")
         lay.addWidget(unit)
@@ -97,7 +97,7 @@ class FilaCarrito(QFrame):
         if not linea.disponible:
             self.btn_mas.setEnabled(False)
             self.btn_menos.setEnabled(False)
-        self.lbl_subtotal = QLabel(fmt_moneda(linea.subtotal_final, moneda))
+        self.lbl_subtotal = QLabel(fmt_moneda(linea.subtotal_final, moneda, linea.decimales))
         self.lbl_subtotal.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.lbl_subtotal.setStyleSheet(f"font-size: 13px; font-weight: 700; border: none;"
                                         f" color: {COLORES['texto']}; background: transparent;")
@@ -130,6 +130,7 @@ class PanelCarrito(QFrame):
         self.modelo = modelo
         self.moneda = "$"
         self.iva_pct = 0.0
+        self.decimales = 0
         self.setObjectName("panelCarrito")
         self.setStyleSheet(f"QFrame#panelCarrito {{ background: {COLORES['superficie']};"
                            f" border-left: 1px solid {COLORES['borde']}; }}")
@@ -212,8 +213,10 @@ class PanelCarrito(QFrame):
         lay.addLayout(fila)
         return v
 
-    def configurar(self, moneda: str, iva_pct: float) -> None:
+    def configurar(self, moneda: str, iva_pct: float, decimales: int = 0) -> None:
         self.moneda, self.iva_pct = moneda or "$", float(iva_pct or 0)
+        self.decimales = int(decimales or 0)
+        self.modelo.decimales = self.decimales
         self.refrescar()
 
     def filas(self) -> list[FilaCarrito]:
@@ -249,9 +252,9 @@ class PanelCarrito(QFrame):
         n = m.cantidad_total
         self.lbl_items.setText(f"{n} item{'s' if n != 1 else ''}")
         hay = len(m) > 0
-        self.val_subtotal.setText(fmt_moneda(m.subtotal, self.moneda) if hay else "—")
-        self.val_ahorro.setText(("-" + fmt_moneda(m.ahorro, self.moneda)) if hay and m.ahorro else "—")
-        self.val_total.setText(fmt_moneda(m.total, self.moneda) if hay else "—")
+        self.val_subtotal.setText(fmt_moneda(m.subtotal, self.moneda, self.decimales) if hay else "—")
+        self.val_ahorro.setText(("-" + fmt_moneda(m.ahorro, self.moneda, self.decimales)) if hay and m.ahorro else "—")
+        self.val_total.setText(fmt_moneda(m.total, self.moneda, self.decimales) if hay else "—")
         self.lbl_nota_iva.setText(
             f"IVA ({self.iva_pct:g}%) se suma al confirmar el pago." if hay and self.iva_pct else "")
         self.btn_pagar.setEnabled(hay)

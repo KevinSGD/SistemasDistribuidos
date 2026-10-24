@@ -220,6 +220,7 @@ class ConfigPublicaOut(_Salida):
     direccion: str = ""
     telefono: str = ""
     iva_pct: float = 0
+    decimales_moneda: int = 0
 
 
 class ConfigOut(ConfigPublicaOut):

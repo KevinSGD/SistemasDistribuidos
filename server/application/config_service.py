@@ -26,11 +26,13 @@ ESQUEMA: dict[str, tuple] = {
     "descuento_sobrestock": (float, 0, 100),
     "intervalo_escaneo_segundos": (int, 10, 3600),
     "iva_pct": (float, 0, 100),
+    "decimales_moneda": (int, 0, 2),
     "inactividad_segundos": (int, 30, 3600),
     "aviso_segundos": (int, 5, None),
     "sesion_maxima_minutos": (int, 1, 10080),
 }
-CLAVES_PUBLICAS = ("moneda", "nombre_negocio", "nit", "direccion", "telefono", "iva_pct")
+CLAVES_PUBLICAS = ("moneda", "nombre_negocio", "nit", "direccion", "telefono", "iva_pct",
+                   "decimales_moneda")
 
 
 def _convertir(clave: str, valor):
@@ -102,6 +104,7 @@ class ConfigService:
             umbral_stock_bajo=v["umbral_stock_bajo"],
             descuento_critico=v["descuento_critico"], descuento_alto=v["descuento_alto"],
             descuento_medio=v["descuento_medio"], descuento_sobrestock=v["descuento_sobrestock"],
+            decimales_moneda=v["decimales_moneda"],
         )
 
     def actualizar(self, cambios: dict, rol: str | None) -> dict:

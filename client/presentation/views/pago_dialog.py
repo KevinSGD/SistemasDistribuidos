@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
 
 from client.application.mensajes import texto_error
 from client.infrastructure.api_client import ApiError
+from shared.dinero import dec
 from shared.schemas import ClienteIn, CompraIn, FacturaOut, ItemCompraIn, PagoIn
 
 from ..styles.theme import COLORES, fmt_moneda
@@ -55,7 +56,7 @@ def validar_documento(texto: str) -> str | None:
     return None
 
 
-def parsear_monto(texto: str) -> float | None:
+def parsear_monto(texto: str, decimales: int = 0) -> float | None:
     """Convierte lo escrito por el usuario ('25000', '25.000', '25.000,50', '25,5') a float.
     None si esta vacio o no se entiende."""
     t = re.sub(r"[\s$]", "", texto or "")
@@ -73,18 +74,18 @@ def parsear_monto(texto: str) -> float | None:
         else:
             t = "".join(partes)                             # separador de miles
     try:
-        return r2(float(t))
+        return r2(float(t), decimales)
     except ValueError:
         return None
 
 
-def calcular_vista_previa(lineas: list[LineaCarrito], iva_pct: float) -> dict:
+def calcular_vista_previa(lineas: list[LineaCarrito], iva_pct: float, decimales: int = 0) -> dict:
     """Total estimado en el cliente (el servidor tiene la ultima palabra)."""
-    subtotal = r2(sum(l.subtotal_original for l in lineas))
-    base = r2(sum(l.subtotal_final for l in lineas))
-    iva = r2(base * float(iva_pct or 0) / 100)
-    return {"subtotal": subtotal, "ahorro": r2(subtotal - base), "base": base, "iva": iva,
-            "total": r2(base + iva)}
+    subtotal = r2(sum(l.subtotal_original for l in lineas), decimales)
+    base = r2(sum(l.subtotal_final for l in lineas), decimales)
+    iva = r2(dec(base) * dec(float(iva_pct or 0)) / 100, decimales)
+    return {"subtotal": subtotal, "ahorro": r2(subtotal - base, decimales), "base": base,
+            "iva": iva, "total": r2(base + iva, decimales)}
 
 
 def _lbl(texto="", px=13, color="texto", peso=400, derecha=False) -> QLabel:
@@ -108,13 +109,14 @@ class PagoDialog(QDialog):
     pedido_rechazado = pyqtSignal(object)      # ApiError 409 (el carrito debe ajustarse)
 
     def __init__(self, app_ctx, lineas: list[LineaCarrito], moneda: str = "$", iva_pct: float = 0.0,
-                 parent: QWidget | None = None):
+                 decimales: int = 0, parent: QWidget | None = None):
         super().__init__(parent)
         self._ctx = app_ctx
         self.lineas = list(lineas)
         self.moneda = moneda or "$"
         self.iva_pct = float(iva_pct or 0)
-        self.vista = calcular_vista_previa(self.lineas, self.iva_pct)
+        self.decimales = int(decimales or 0)
+        self.vista = calcular_vista_previa(self.lineas, self.iva_pct, self.decimales)
         self.factura: FacturaOut | None = None
         self.procesando = False
         self._tocados: set[str] = set()
@@ -144,7 +146,7 @@ class PagoDialog(QDialog):
         self.tabla.set_filas(
             [[l.nombre, l.cantidad, l.precio_original, l.descuento, l.precio_final, l.subtotal_final]
              for l in self.lineas],
-            formateador=lambda v: fmt_moneda(v, m),
+            formateador=lambda v: fmt_moneda(v, m, self.decimales),
             formateadores={1: str, 3: lambda v: f"-{v:g}%" if v else "—"})
         self.tabla.setSortingEnabled(False)
         self.tabla.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -160,19 +162,19 @@ class PagoDialog(QDialog):
         # Totales (vista previa)
         tot = QGridLayout()
         tot.setColumnStretch(0, 1)
-        filas = [("Subtotal sin descuento", fmt_moneda(self.vista["subtotal"], m), "texto_suave", 400)]
+        filas = [("Subtotal sin descuento", fmt_moneda(self.vista["subtotal"], m, self.decimales), "texto_suave", 400)]
         if self.vista["ahorro"]:
-            filas.append(("Ahorro", "-" + fmt_moneda(self.vista["ahorro"], m), "exito_texto", 700))
+            filas.append(("Ahorro", "-" + fmt_moneda(self.vista["ahorro"], m, self.decimales), "exito_texto", 700))
         if self.iva_pct:
-            filas.append(("Base gravable", fmt_moneda(self.vista["base"], m), "texto_suave", 400))
-            filas.append((f"IVA {self.iva_pct:g}% (estimado)", fmt_moneda(self.vista["iva"], m),
+            filas.append(("Base gravable", fmt_moneda(self.vista["base"], m, self.decimales), "texto_suave", 400))
+            filas.append((f"IVA {self.iva_pct:g}% (estimado)", fmt_moneda(self.vista["iva"], m, self.decimales),
                           "texto_suave", 400))
         for i, (k, v, c, p) in enumerate(filas):
             tot.addWidget(_lbl(k, 12, c, p, True), i, 0)
             tot.addWidget(_lbl(v, 12, c, p, True), i, 1)
         n = len(filas)
         tot.addWidget(_lbl("TOTAL A PAGAR", 15, "texto", 700, True), n, 0)
-        self.lbl_total = _lbl(fmt_moneda(self.vista["total"], m), 18, "primario_texto", 700, True)
+        self.lbl_total = _lbl(fmt_moneda(self.vista["total"], m, self.decimales), 18, "primario_texto", 700, True)
         tot.addWidget(self.lbl_total, n, 1)
         raiz.addLayout(tot)
 
@@ -305,7 +307,7 @@ class PagoDialog(QDialog):
 
     @property
     def monto(self) -> float | None:
-        return parsear_monto(self.input_monto.text())
+        return parsear_monto(self.input_monto.text(), self.decimales)
 
     def _cambio_metodo(self) -> None:
         efectivo = self.radio_efectivo.isChecked()
@@ -315,7 +317,8 @@ class PagoDialog(QDialog):
 
     def _poner_exacto(self) -> None:
         t = self.vista["total"]
-        self.input_monto.setText(f"{t:.2f}".rstrip("0").rstrip(".") if t != int(t) else str(int(t)))
+        self.input_monto.setText(f"{t:.{self.decimales}f}".rstrip("0").rstrip(".")
+                                 if self.decimales and t != int(t) else str(int(t)))
 
     def _marcar_campo(self, campo: QLineEdit, label: QLabel, error: str | None, mostrar: bool) -> None:
         label.setText(error if (error and mostrar) else "")
@@ -341,13 +344,13 @@ class PagoDialog(QDialog):
                 self.lbl_cambio.setText("—")
                 self.lbl_faltante.setText("")
                 ok_pago = False
-            elif r2(monto) < total:
+            elif r2(monto, self.decimales) < total:
                 self.lbl_cambio.setText("—")
-                self.lbl_faltante.setText(f"Faltan {fmt_moneda(r2(total - monto), self.moneda)} "
+                self.lbl_faltante.setText(f"Faltan {fmt_moneda(r2(total - monto, self.decimales), self.moneda, self.decimales)} "
                                           "para completar el pago")
                 ok_pago = False
             else:
-                self.lbl_cambio.setText(fmt_moneda(r2(monto - total), self.moneda))
+                self.lbl_cambio.setText(fmt_moneda(r2(monto - total, self.decimales), self.moneda, self.decimales))
                 self.lbl_faltante.setText("")
         valido = err_n is None and err_d is None and ok_pago
         self.btn_confirmar.setEnabled(valido and not self.procesando)
@@ -410,7 +413,7 @@ class PagoDialog(QDialog):
         if isinstance(exc, ApiError) and exc.codigo == "EFECTIVO_INSUFICIENTE":
             falta = exc.detalle.get("faltante")
             self.mostrar_error("El efectivo recibido no alcanza para el total confirmado por el servidor"
-                               + (f": faltan {fmt_moneda(falta, self.moneda)}." if falta else "."))
+                               + (f": faltan {fmt_moneda(falta, self.moneda, self.decimales)}." if falta else "."))
             return
         self.mostrar_error(texto_error(exc))
 

@@ -59,10 +59,20 @@ def test_puede_venderse():
 
 def test_calcular_linea_con_descuento():
     p = prod(fecha_vencimiento=AHORA + timedelta(days=2), precio_base=19.99)
-    ev = evaluar_producto(p, PoliticaRiesgo(), AHORA)
+    # Centavos: capacidad explicita (decimales=2). 19,99 * 50 % = 9,995 -> 10,00 con redondeo
+    # half-up (antes 9,99 por el redondeo al par/representacion binaria de round()).
+    ev = evaluar_producto(p, PoliticaRiesgo(decimales_moneda=2), AHORA)
+    l = calcular_linea(p, 3, ev, decimales=2)
+    assert l.precio_unitario == 10.0 and l.subtotal == 30.0
+    assert l.ahorro == 29.97
+
+
+def test_calcular_linea_pesos_enteros_por_defecto():
+    p = prod(fecha_vencimiento=AHORA + timedelta(days=2), precio_base=4500)
+    ev = evaluar_producto(p, PoliticaRiesgo(descuento_critico=15.0), AHORA)
     l = calcular_linea(p, 3, ev)
-    assert l.precio_unitario == 9.99 and l.subtotal == 29.97
-    assert l.ahorro == round((19.99 - 9.99) * 3, 2) == 30.0
+    assert (l.precio_original, l.precio_unitario, l.subtotal, l.ahorro) == (4500, 3825, 11475, 2025)
+    assert all(isinstance(v, int) for v in (l.precio_unitario, l.subtotal, l.ahorro))
 
 
 def test_calcular_linea_sin_descuento():

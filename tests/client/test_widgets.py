@@ -62,8 +62,14 @@ def test_hoja_estilo_resuelve_todo(app):
 def test_fmt_moneda():
     assert fmt_moneda(1234567) == "$1.234.567"
     assert fmt_moneda(1234.0) == "$1.234"
-    assert fmt_moneda(1234.5) == "$1.234,50"
-    assert fmt_moneda(1234.5, "COP") == "COP 1.234"
+    assert fmt_moneda(1234.5) == "$1.235"                  # 0 decimales por defecto, half-up
+    assert fmt_moneda(1234.5, decimales=2) == "$1.234,50"  # centavos solo si se piden
+    assert fmt_moneda(1234.4) == "$1.234" and fmt_moneda(2.5) == "$3"
+    assert fmt_moneda(1234567.99, "$", 0) == "$1.234.568" and "," not in fmt_moneda(1234567.49)
+    assert fmt_moneda(1234.0, decimales=2) == "$1.234,00"
+    assert fmt_moneda(1234.5, "COP", 2) == "COP 1.235"
+    assert fmt_moneda(-0.4) == "$0" and fmt_moneda("x") == "$0"
+    assert fmt_moneda(1234.5, "COP") == "COP 1.235"        # half-up (antes 1.234 por redondeo al par)
     assert fmt_moneda(0) == "$0"
     assert fmt_moneda(-500) == "-$500"
 
