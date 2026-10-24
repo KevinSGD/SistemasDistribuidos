@@ -29,3 +29,7 @@ class CantidadInvalida(ErrorDominio):
 
 class NoEncontrado(ErrorDominio):
     codigo, http = "NO_ENCONTRADO", 404
+
+
+class EfectivoInsuficiente(ErrorDominio):
+    codigo, http = "EFECTIVO_INSUFICIENTE", 422
