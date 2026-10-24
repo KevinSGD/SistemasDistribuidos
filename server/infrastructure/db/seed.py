@@ -1,7 +1,7 @@
 """Valores por defecto de la configuracion. No siembra usuarios (lo hace seguridad)."""
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from .orm import ConfiguracionORM
@@ -13,7 +13,6 @@ CONFIG_POR_DEFECTO: dict[str, str] = {
     "umbral_stock_bajo": "10",
     "descuento_critico": "50",
     "descuento_alto": "30",
-    "descuento_medio": "15",
     "descuento_sobrestock": "10",
     "intervalo_escaneo_segundos": "60",
     "nombre_negocio": "Mi Negocio",
@@ -28,8 +27,14 @@ CONFIG_POR_DEFECTO: dict[str, str] = {
 }
 
 
+#: Claves retiradas del producto; se borran de BD ya sembradas al arrancar.
+CLAVES_OBSOLETAS: tuple[str, ...] = ("descuento_medio",)
+
+
 def sembrar_configuracion(sesion: Session) -> int:
-    """Inserta solo las claves ausentes (no pisa valores editados). Devuelve cuantas inserto."""
+    """Inserta solo las claves ausentes (no pisa valores editados) y borra las obsoletas
+    (idempotente). Devuelve cuantas inserto."""
+    sesion.execute(delete(ConfiguracionORM).where(ConfiguracionORM.clave.in_(CLAVES_OBSOLETAS)))
     existentes = set(sesion.scalars(select(ConfiguracionORM.clave)))
     nuevas = [ConfiguracionORM(clave=k, valor=v)
               for k, v in CONFIG_POR_DEFECTO.items() if k not in existentes]

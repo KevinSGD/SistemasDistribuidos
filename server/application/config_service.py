@@ -22,7 +22,6 @@ ESQUEMA: dict[str, tuple] = {
     "umbral_stock_bajo": (int, 0, 1_000_000),
     "descuento_critico": (float, 0, 100),
     "descuento_alto": (float, 0, 100),
-    "descuento_medio": (float, 0, 100),
     "descuento_sobrestock": (float, 0, 100),
     "intervalo_escaneo_segundos": (int, 10, 3600),
     "iva_pct": (float, 0, 100),
@@ -31,6 +30,7 @@ ESQUEMA: dict[str, tuple] = {
     "aviso_segundos": (int, 5, None),
     "sesion_maxima_minutos": (int, 1, 10080),
 }
+CLAVES_OBSOLETAS = ("descuento_medio",)
 CLAVES_PUBLICAS = ("moneda", "nombre_negocio", "nit", "direccion", "telefono", "iva_pct",
                    "decimales_moneda")
 
@@ -76,6 +76,8 @@ class ConfigService:
             crudo = ConfigRepo(s).todos()
         out = {}
         for k, v in crudo.items():
+            if k in CLAVES_OBSOLETAS:   # fila huerfana de una BD antigua: se ignora
+                continue
             if k in ESQUEMA:
                 try:
                     out[k] = _convertir(k, v)
@@ -103,7 +105,7 @@ class ConfigService:
             dias_alerta=v["dias_alerta_vencimiento"], dias_critico=v["dias_critico_vencimiento"],
             umbral_stock_bajo=v["umbral_stock_bajo"],
             descuento_critico=v["descuento_critico"], descuento_alto=v["descuento_alto"],
-            descuento_medio=v["descuento_medio"], descuento_sobrestock=v["descuento_sobrestock"],
+            descuento_sobrestock=v["descuento_sobrestock"],
             decimales_moneda=v["decimales_moneda"],
         )
 

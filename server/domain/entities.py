@@ -32,7 +32,6 @@ class PoliticaRiesgo:
     proporcion_sobrestock: float = 0.9
     descuento_critico: float = 50.0
     descuento_alto: float = 30.0
-    descuento_medio: float = 15.0
     descuento_sobrestock: float = 10.0
     decimales_moneda: int = 0   # 0 = pesos enteros
 

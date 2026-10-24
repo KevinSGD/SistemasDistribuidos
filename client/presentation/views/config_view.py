@@ -23,14 +23,14 @@ MONEDAS = ["$", "€", "£", "USD", "COP", "MXN"]
 #: Valores por defecto del servidor (server/infrastructure/db/seed.py) para "Restablecer".
 #: No incluye los datos del negocio (nombre, NIT, direccion, telefono, moneda, IVA).
 DEFECTOS: dict[str, int | float] = {
-    "descuento_critico": 50.0, "descuento_alto": 30.0, "descuento_medio": 15.0,
+    "descuento_critico": 50.0, "descuento_alto": 30.0,
     "descuento_sobrestock": 10.0,
     "dias_alerta_vencimiento": 7, "dias_critico_vencimiento": 3, "umbral_stock_bajo": 10,
     "intervalo_escaneo_segundos": 60,
     "inactividad_segundos": 180, "aviso_segundos": 30,
 }
 TEXTOS = ("nombre_negocio", "nit", "direccion", "telefono", "moneda")
-DECIMALES = ("iva_pct", "descuento_critico", "descuento_alto", "descuento_medio", "descuento_sobrestock")
+DECIMALES = ("iva_pct", "descuento_critico", "descuento_alto", "descuento_sobrestock")
 ENTEROS = ("dias_alerta_vencimiento", "dias_critico_vencimiento", "umbral_stock_bajo",
            "intervalo_escaneo_segundos", "inactividad_segundos", "aviso_segundos")
 CLAVES_SESION = ("inactividad_segundos", "aviso_segundos")
@@ -180,6 +180,12 @@ class ConfigView(c.VistaBase):
         else:
             widget.valueChanged.connect(lambda *_a, k=clave: self._al_cambiar(k))
 
+    def _nota(self, grid: QGridLayout, texto: str) -> None:
+        n = QLabel(texto, self)
+        n.setWordWrap(True)
+        n.setStyleSheet(f"font-size: 11px; color: {COLORES['texto_suave']};")
+        grid.addWidget(n, grid.rowCount(), 0, 1, 2)
+
     def _texto(self, ancho_max: int = 150) -> QLineEdit:
         e = QLineEdit(self)
         e.setMaxLength(ancho_max)
@@ -217,11 +223,14 @@ class ConfigView(c.VistaBase):
         return marco
 
     def _seccion_descuentos(self) -> QFrame:
-        marco, g = self._tarjeta("Reglas de descuento", "Porcentaje que se aplica según el nivel de riesgo.")
-        self._fila(g, "descuento_critico", "Nivel crítico", self._dec())
-        self._fila(g, "descuento_alto", "Nivel alto", self._dec())
-        self._fila(g, "descuento_medio", "Nivel medio", self._dec())
+        marco, g = self._tarjeta("Reglas de descuento", "Porcentaje que se aplica según el motivo de riesgo.")
+        self._fila(g, "descuento_critico", "Crítico", self._dec())
+        self._nota(g, "Crítico: vence en el plazo de «Días en nivel crítico» o menos.")
+        self._fila(g, "descuento_alto", "Alto", self._dec())
+        self._nota(g, "Alto: vence dentro de los «Días de alerta por vencimiento», sin llegar a crítico.")
         self._fila(g, "descuento_sobrestock", "Sobrestock", self._dec())
+        self._nota(g, "Sobrestock: cuando el stock llega al 90 % del máximo; el stock bajo solo genera "
+                      "alerta, sin descuento.")
         return marco
 
     def _seccion_umbrales(self) -> QFrame:

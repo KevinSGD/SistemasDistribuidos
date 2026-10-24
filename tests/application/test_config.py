@@ -87,3 +87,19 @@ def test_decimales_moneda_defecto_publico_y_rango(config):
     for malo in (-1, 3, 1.5, "x"):
         with pytest.raises(ErrorValidacion):
             config.actualizar({"decimales_moneda": malo}, "admin")
+
+
+def test_descuento_medio_es_clave_desconocida(config):
+    with pytest.raises(ErrorValidacion):
+        config.actualizar({"descuento_medio": 20}, "admin")
+    assert "descuento_medio" not in config.obtener_todo("admin")
+
+
+def test_fila_huerfana_descuento_medio_se_ignora(config, factory):
+    from server.infrastructure.db.engine import sesion
+    from server.infrastructure.db.repos import ConfigRepo
+    with sesion(factory) as s:
+        ConfigRepo(s).set("descuento_medio", "15")
+    assert "descuento_medio" not in config.obtener_todo("admin")
+    config.politica_riesgo()                        # no depende de la clave
+    config.actualizar({"iva_pct": 5}, "admin")      # y no rompe escrituras

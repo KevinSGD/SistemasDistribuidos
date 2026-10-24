@@ -230,7 +230,6 @@ class ConfigOut(ConfigPublicaOut):
     umbral_stock_bajo: int
     descuento_critico: float
     descuento_alto: float
-    descuento_medio: float
     descuento_sobrestock: float
     intervalo_escaneo_segundos: int
     inactividad_segundos: int
@@ -254,7 +253,6 @@ class ConfigUpdate(_Entrada):
     umbral_stock_bajo: _Valor | None = None
     descuento_critico: _Valor | None = None
     descuento_alto: _Valor | None = None
-    descuento_medio: _Valor | None = None
     descuento_sobrestock: _Valor | None = None
     intervalo_escaneo_segundos: _Valor | None = None
     iva_pct: _Valor | None = None

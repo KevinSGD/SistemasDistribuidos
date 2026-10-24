@@ -631,7 +631,7 @@ def restaurar_config(api_admin):
     api_admin.actualizar_config({
         k: getattr(antes, k) for k in (
             "inactividad_segundos", "aviso_segundos", "descuento_critico", "descuento_alto",
-            "descuento_medio", "descuento_sobrestock", "dias_alerta_vencimiento",
+            "descuento_sobrestock", "dias_alerta_vencimiento",
             "dias_critico_vencimiento", "umbral_stock_bajo", "intervalo_escaneo_segundos",
             "nombre_negocio", "iva_pct", "nit", "direccion", "telefono", "moneda")})
 
@@ -645,6 +645,14 @@ def test_config_carga_valores_y_preview(win, espera, restaurar_config):
     v._widgets["aviso_segundos"].setText("30")
     assert v.lbl_previa.text() == "Se cerrará la sesión tras 3 min 0 s sin actividad; aviso 30 s antes"
     assert duracion(45) == "45 s" and vista_previa(90, 10).startswith("Se cerrará la sesión tras 1 min 30 s")
+
+
+def test_config_sin_campo_nivel_medio(win, espera, restaurar_config):
+    from client.presentation.views import config_view as cv
+    v = ir(win, espera, "configuracion")
+    assert "descuento_medio" not in v._widgets and "descuento_medio" not in v.valores()
+    assert "descuento_medio" not in cv.DEFECTOS and "descuento_medio" not in cv.DECIMALES
+    assert {"descuento_critico", "descuento_alto", "descuento_sobrestock"} <= set(v._widgets)
 
 
 def test_config_validacion_de_rangos_en_vivo(win, espera, restaurar_config):

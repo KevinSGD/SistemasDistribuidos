@@ -253,7 +253,7 @@ def test_usuarios_y_sesiones(s):
 def test_config_defaults_y_seed(s):
     esperadas = {
         "moneda", "dias_alerta_vencimiento", "dias_critico_vencimiento", "umbral_stock_bajo",
-        "descuento_critico", "descuento_alto", "descuento_medio", "descuento_sobrestock",
+        "descuento_critico", "descuento_alto", "descuento_sobrestock",
         "intervalo_escaneo_segundos", "nombre_negocio", "nit", "direccion", "telefono",
         "iva_pct", "inactividad_segundos", "aviso_segundos", "sesion_maxima_minutos",
         "decimales_moneda",
@@ -268,3 +268,17 @@ def test_config_defaults_y_seed(s):
     assert c.get("umbral_stock_bajo") == "20"
     assert c.todos()["iva_pct"] == "0"
     assert c.get("inexistente", "z") == "z"
+
+
+def test_seed_no_incluye_descuento_medio_y_limpia_fila_huerfana(s):
+    assert "descuento_medio" not in CONFIG_POR_DEFECTO
+    c = ConfigRepo(s)
+    sembrar_configuracion(s)
+    assert "descuento_medio" not in c.todos()
+    c.set("descuento_medio", "15")                 # BD antigua con la clave huerfana
+    c.set("iva_pct", "19")
+    assert sembrar_configuracion(s) == 0           # solo borra, no inserta
+    assert "descuento_medio" not in c.todos()
+    assert c.get("iva_pct") == "19"                # no toca el resto
+    assert sembrar_configuracion(s) == 0           # idempotente
+    assert "descuento_medio" not in c.todos()

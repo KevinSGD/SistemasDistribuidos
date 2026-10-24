@@ -220,11 +220,12 @@ def test_put_config_valida_rangos(client, admin, comprador):
     h = admin[0]
     for cuerpo in ({"inactividad_segundos": 5}, {"inactividad_segundos": 99999},
                    {"descuento_alto": 150}, {"aviso_segundos": 500},
-                   {"inactividad_segundos": "abc"}, {"clave_inventada": 1}, {}):
+                   {"inactividad_segundos": "abc"}, {"clave_inventada": 1}, {},
+                   {"descuento_medio": 15}):
         r = client.put(f"{B}/config", json=cuerpo, headers=h)
         assert r.status_code == 422 and r.json()["codigo"] == "VALIDACION", cuerpo
     cfg = client.get(f"{B}/config", headers=h).json()
-    assert cfg["inactividad_segundos"] == 180
+    assert cfg["inactividad_segundos"] == 180 and "descuento_medio" not in cfg
     r = client.put(f"{B}/config", json={"nombre_negocio": "Tienda Z", "iva_pct": 19}, headers=h)
     assert r.status_code == 200 and r.json()["nombre_negocio"] == "Tienda Z"
     assert client.get(f"{B}/config/publica", headers=comprador[0]).json()["nombre_negocio"] == "Tienda Z"
