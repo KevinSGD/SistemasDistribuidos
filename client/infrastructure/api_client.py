@@ -64,6 +64,13 @@ class ApiClient:
         self.on_sesion_invalida = on_sesion_invalida
         self._notificado = False
         self._lock = threading.Lock()
+        # Cierre seguro: httpx.Client.close() con una peticion en vuelo en otro hilo puede
+        # tumbar el proceso en Windows. cerrar() solo marca; el cierre real lo hace la
+        # ultima peticion en vuelo (o cerrar() mismo si no hay ninguna).
+        self._lock_vuelo = threading.Lock()
+        self._en_vuelo = 0
+        self._cerrado = False
+        self._http_cerrado = False
         if timeout is None:
             timeout = httpx.Timeout(TIMEOUT_LECTURA, connect=TIMEOUT_CONEXION)
         self._http = httpx.Client(base_url=self.base_url + PREFIJO, timeout=timeout,
@@ -71,7 +78,16 @@ class ApiClient:
 
     # -- infraestructura ------------------------------------------------------------------
     def cerrar(self) -> None:
-        self._http.close()
+        """No bloquea: rechaza peticiones nuevas y cierra el transporte al quedar libre."""
+        with self._lock_vuelo:
+            self._cerrado = True
+            self._cerrar_http_si_libre()
+
+    def _cerrar_http_si_libre(self) -> None:
+        # Llamar con _lock_vuelo tomado.
+        if self._cerrado and self._en_vuelo == 0 and not self._http_cerrado:
+            self._http_cerrado = True
+            self._http.close()
 
     def establecer_token(self, token: str | None) -> None:
         self.token = token
@@ -93,11 +109,19 @@ class ApiClient:
     def _pedir(self, metodo: str, ruta: str, *, json: Any = None, params: dict | None = None,
                auth: bool = True, notificar: bool = True) -> httpx.Response:
         headers = {"Authorization": f"Bearer {self.token}"} if auth and self.token else {}
+        with self._lock_vuelo:
+            if self._cerrado:
+                raise ErrorConexion("La conexion con el servidor ya fue cerrada", self.base_url)
+            self._en_vuelo += 1
         try:
             resp = self._http.request(metodo, ruta, json=json, params=params, headers=headers)
         except httpx.HTTPError as exc:      # ConnectError, timeouts, errores de red, protocolo
             raise ErrorConexion(
                 f"No se pudo conectar con el servidor ({self.base_url})", self.base_url) from exc
+        finally:
+            with self._lock_vuelo:
+                self._en_vuelo -= 1
+                self._cerrar_http_si_libre()
         if resp.status_code >= 400:
             err = self._error(resp)
             if notificar and auth and err.http == 401 and err.codigo in CODIGOS_SESION_INVALIDA:

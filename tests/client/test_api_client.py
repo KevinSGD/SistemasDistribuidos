@@ -130,3 +130,42 @@ def test_normalizar_url():
         normalizar_url("")
     with pytest.raises(ValueError):
         normalizar_url("ftp://x")
+
+
+def test_cerrar_con_peticion_en_vuelo_no_la_corta_y_rechaza_nuevas():
+    """cerrar() no cierra el transporte bajo una peticion en curso (crash nativo en Windows)."""
+    import threading
+    entro, soltar = threading.Event(), threading.Event()
+
+    def handler(request):
+        entro.set()
+        soltar.wait(5)
+        return httpx.Response(200, json={"estado": "ok", "version": "1", "so": "x"})
+
+    api = ApiClient("http://localhost:9", transport=httpx.MockTransport(handler))
+    resultado = {}
+
+    def pedir():
+        try:
+            resultado["ok"] = api.health()
+        except Exception as exc:     # noqa: BLE001
+            resultado["error"] = exc
+
+    hilo = threading.Thread(target=pedir)
+    hilo.start()
+    assert entro.wait(5)
+    api.cerrar()                      # con la peticion en vuelo: no bloquea ni cierra aun
+    assert api._http_cerrado is False
+    with pytest.raises(ErrorConexion):
+        api.health()                  # las nuevas se rechazan
+    soltar.set()
+    hilo.join(5)
+    assert "error" not in resultado and resultado["ok"].estado == "ok"
+    assert api._http_cerrado is True  # la ultima en vuelo hizo el cierre real
+
+
+def test_cerrar_sin_peticiones_cierra_de_inmediato():
+    api = ApiClient("http://localhost:9", transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+    api.cerrar()
+    api.cerrar()                      # idempotente
+    assert api._http_cerrado is True
