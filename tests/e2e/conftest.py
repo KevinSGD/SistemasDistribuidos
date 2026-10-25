@@ -134,3 +134,12 @@ def sin_visor(monkeypatch):
     monkeypatch.setattr("client.presentation.views.factura_view.abrir_archivo",
                         lambda ruta: abiertos.append(ruta) or True)
     return abiertos
+
+
+@pytest.fixture(autouse=True)
+def _limpieza_qt():
+    """Tras cada prueba: entrega borrados diferidos y recolecta en un punto seguro
+    (ver tests/qt_limpieza.py: evita el cierre nativo intermitente por el GC)."""
+    yield
+    from tests.qt_limpieza import vaciar_qt
+    vaciar_qt()

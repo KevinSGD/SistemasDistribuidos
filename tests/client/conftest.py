@@ -62,7 +62,13 @@ class Servidor:
 
     def detener(self) -> None:
         if self.proc and self.proc.poll() is None:
-            self.proc.terminate()
+            if sys.platform == "win32":
+                # El python del venv es un launcher: terminate() solo mata al launcher y deja
+                # huerfano al servidor real. /T mata el arbol completo.
+                subprocess.run(["taskkill", "/PID", str(self.proc.pid), "/T", "/F"],
+                               capture_output=True, check=False)
+            else:
+                self.proc.terminate()
             try:
                 self.proc.wait(10)
             except subprocess.TimeoutExpired:
@@ -138,3 +144,12 @@ def api_comprador(servidor):
     c.login("comprador", COMP_PW)
     yield c
     c.cerrar()
+
+
+@pytest.fixture(autouse=True)
+def _limpieza_qt():
+    """Tras cada prueba: entrega borrados diferidos y recolecta en un punto seguro
+    (ver tests/qt_limpieza.py: evita el cierre nativo intermitente por el GC)."""
+    yield
+    from tests.qt_limpieza import vaciar_qt
+    vaciar_qt()

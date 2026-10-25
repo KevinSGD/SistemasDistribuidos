@@ -90,7 +90,7 @@ $env:QT_QPA_PLATFORM='offscreen'; .\.venv\Scripts\python.exe -m pytest tests -q 
 .\.venv\Scripts\python.exe -m pytest tests/e2e -m e2e -p no:cacheprovider -v -s
 ```
 
-La suite normal necesita las dependencias de ambos nodos (por eso existe el `requirements.txt` de la raíz). Los e2e levantan su propia instancia del servidor en WSL2 (puerto desde 8010) y no tocan el servidor de demo. Resultados registrados: 398 pruebas normales y 32 e2e aprobadas el 2026-10-24, ver [docs/INFORME_PRUEBAS.md](docs/INFORME_PRUEBAS.md). Las capturas se regeneran con `python -m tests.e2e.capturas`.
+La suite normal necesita las dependencias de ambos nodos (por eso existe el `requirements.txt` de la raíz). Los e2e levantan su propia instancia del servidor en WSL2 (puerto desde 8010) y no tocan el servidor de demo. Resultados medidos el 2026-10-24: 419 pruebas normales aprobadas en 3 ejecuciones consecutivas y 32 e2e aprobadas (32 de 32 en la última ejecución completa), ver [docs/INFORME_PRUEBAS.md](docs/INFORME_PRUEBAS.md). Las capturas se regeneran con `python -m tests.e2e.capturas`.
 
 ## Estructura del repositorio
 

@@ -45,8 +45,8 @@ Variables opcionales: `INVENTARIO_E2E_PUERTO` (puerto base, 8010), `INVENTARIO_W
 
 | Comando | Resultado real |
 |---|---|
-| `QT_QPA_PLATFORM=offscreen .venv\Scripts\python.exe -m pytest tests -q -p no:cacheprovider` | **398 passed, 32 deselected, 6 warnings in 145.22s** (los 398 de antes; los 32 son los e2e) |
-| `.venv\Scripts\python.exe -m pytest tests/e2e -m e2e -p no:cacheprovider -v -rx --durations=0` | **32 passed, 0 xfailed in 191.44s (0:03:11)** (tras corregir H-1, H-2 y H-3; antes: 29 passed, 3 xfailed) |
+| `QT_QPA_PLATFORM=offscreen .venv\Scripts\python.exe -m pytest tests -q -p no:cacheprovider` | **419 passed, 32 deselected** en tres ejecuciones consecutivas en serie (212 s, 201 s y 198 s), 0 cierres nativos. Medido por el orquestador tras la correccion de H-4 (los 32 deseleccionados son los e2e) |
+| `.venv\Scripts\python.exe -m pytest tests/e2e -m e2e -p no:cacheprovider -v -rx --durations=0` | Dos ejecuciones completas medidas por el orquestador: **31 passed, 1 failed** (199 s) y despues **32 passed** (199 s). El fallo fue una medicion de tiempo (H-5). Antes de corregir H-1, H-2 y H-3: 29 passed, 3 xfailed |
 
 ### 4.2 Tabla de escenarios
 
@@ -128,6 +128,33 @@ Observaciones menores (sin test):
 - **Ruido en el log del cliente:** `WARNING client.infrastructure.workers: Error en tarea sin manejador: ApiError('SESION_CERRADA'…)` aparece tras cada cierre por inactividad con más de un socket del mismo usuario: `_verificar_sesion` lanza `estado_sesion` sin manejadores al recibir `sesion_cerrada`. Inofensivo.
 - **El bloqueo de intentos de login es en memoria** (diseño documentado): un reinicio del servidor lo borra (verificado en el escenario 7). Es una limitación aceptable, no un defecto.
 - Con `OpcionesCliente` por defecto el texto de la barra pasa a "Servidor desconectado" hasta 12 s después de caerse el servidor (health cada 10 s); el punto rojo y "Sin eventos en vivo (reconectando)" aparecen a los 0,15 s por el cierre del WS.
+
+### H-4 Cierre nativo intermitente del cliente (causa demostrada; era del arnés de pruebas)
+
+- **Sintoma.** La suite normal terminaba a veces con `Windows fatal exception: access violation` (exit 139): 2 de 6 ejecuciones, y 4 de 4 procesos en la reproduccion de estres (login y cierre de sesion en rafaga, 80 ciclos).
+- **Causa.** Las pruebas mueven la aplicacion a mano con `processEvents()`. Qt NO entrega asi los `deleteLater()` (solo los entrega un bucle de eventos real, `app.exec()`). Los widgets (`BuyerWindow`, `LoginView`, `Aplicacion`) quedaban vivos hasta que el recolector de basura de Python los finalizaba en un momento arbitrario, a veces dentro de un `processEvents` con senales en cola dirigidas a ellos.
+- **Evidencia (4 procesos x 80 ciclos, mismo codigo).**
+
+| Variante | Caidas |
+|---|---|
+| Sin cambios (PyQt6 6.7.0, Python 3.13) | 4 de 4 |
+| PyQt6 6.11.0 | 4 de 4 |
+| Puente unico de hilos en `workers.py` (hipotesis descartada, revertida) | 4 de 4 |
+| Desconectar senales del WebSocket antes de destruir `EventClient` (descartada, revertida) | 4 de 4 |
+| Python 3.14.2 + PyQt6 6.11.0 | 1 de 4 |
+| Recolector de basura desactivado (`gc.disable()`) | **0 de 4** |
+| Entrega explicita de borrados diferidos + `gc.collect()` en punto seguro | **0 de 4** |
+
+  Con `gc.set_debug(DEBUG_COLLECTABLE)` el recolector nombro 12 `BuyerWindow`, 10 `LoginView` y 10 `Aplicacion` recolectados en solo 6 ciclos.
+- **Correccion.** `tests/qt_limpieza.py::vaciar_qt()` y un fixture automatico en `tests/client/conftest.py` y `tests/e2e/conftest.py`. Ademas, el fixture que lanza el servidor de pruebas dejaba procesos huerfanos en Windows (el `python` del venv es un lanzador y `terminate()` solo mataba al lanzador): ahora termina el arbol (`taskkill /T /F`). El codigo de produccion de `client/` no se modifico.
+- **Verificacion.** 3 ejecuciones consecutivas de la suite normal: 419 passed, 0 cierres. 2 ejecuciones e2e: sin cierres.
+- **Reproduccion.** `python -m tests.stress.stress_login_logout 80 --sin-limpieza` (lanzar 4 procesos en paralelo para medir la tasa) reproduce el fallo; sin `--sin-limpieza` no cae.
+- **Lo que NO esta demostrado.** Que la aplicacion de produccion este libre del problema es una INFERENCIA: usa un bucle de eventos real, que entrega los `deleteLater()` en orden, y no se observo ningun cierre fuera de pruebas. No se midio en produccion.
+
+### H-5 Medicion de tiempo sensible a la carga (test_03, servidor caido)
+
+- En una ejecucion e2e completa `test_03_servidor_caido.py` midio un hueco maximo del hilo grafico de 0,559 s frente al umbral de 0,5 s (el resto de huecos, ~0,06 s). Aislada pasa 3 de 3 y en la segunda ejecucion completa tambien paso (32 de 32).
+- La maquina de la ejecucion fallida tenia ~74 procesos huerfanos de servidores de pruebas (~1,8 GB) de ejecuciones anteriores. Se interpreta como una pausa puntual bajo carga, no como un bloqueo sostenido; NO esta demostrado que no sea una congelacion breve real. El umbral no se modifico.
 
 ## 6. Limitaciones
 
