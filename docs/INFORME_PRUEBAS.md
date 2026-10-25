@@ -45,8 +45,8 @@ Variables opcionales: `INVENTARIO_E2E_PUERTO` (puerto base, 8010), `INVENTARIO_W
 
 | Comando | Resultado real |
 |---|---|
-| `QT_QPA_PLATFORM=offscreen .venv\Scripts\python.exe -m pytest tests -q -p no:cacheprovider` | **419 passed, 32 deselected** en tres ejecuciones consecutivas en serie (212 s, 201 s y 198 s), 0 cierres nativos. Medido por el orquestador tras la correccion de H-4 (los 32 deseleccionados son los e2e) |
-| `.venv\Scripts\python.exe -m pytest tests/e2e -m e2e -p no:cacheprovider -v -rx --durations=0` | Dos ejecuciones completas medidas por el orquestador: **31 passed, 1 failed** (199 s) y despues **32 passed** (199 s). El fallo fue una medicion de tiempo (H-5). Antes de corregir H-1, H-2 y H-3: 29 passed, 3 xfailed |
+| `QT_QPA_PLATFORM=offscreen .venv\Scripts\python.exe -m pytest tests -q -p no:cacheprovider` | **507 passed, 32 deselected** en una ejecucion completa (146 s) tras anadir el control de facturas y la correccion de la fecha de vencimiento; antes de esas dos funciones: **419 passed** en tres ejecuciones consecutivas en serie (212 s, 201 s y 198 s), 0 cierres nativos. Medido por el orquestador tras la correccion de H-4 (los 32 deseleccionados son los e2e) |
+| `.venv\Scripts\python.exe -m pytest tests/e2e -m e2e -p no:cacheprovider -v -rx --durations=0` | Tres ejecuciones completas medidas por el orquestador: **31 passed, 1 failed** (199 s), despues **32 passed** (199 s) y, tras anadir facturas y la correccion de la fecha, **32 passed** (159 s). El unico fallo fue una medicion de tiempo (H-5). Antes de corregir H-1, H-2 y H-3: 29 passed, 3 xfailed |
 
 ### 4.2 Tabla de escenarios
 

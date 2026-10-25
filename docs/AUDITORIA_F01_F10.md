@@ -1,6 +1,6 @@
 # Matriz de las falencias F-01 a F-10 de la auditoría
 
-Cada fila se comprobó leyendo el código y los nombres de las pruebas actuales (módulo y función). Cifras de ejecución medidas por el orquestador el 2026-10-24 (detalle en [INFORME_PRUEBAS.md](INFORME_PRUEBAS.md)): suite normal 419 pruebas aprobadas en 3 ejecuciones consecutivas; E2E 32 de 32 en la última ejecución completa (la anterior dio 31 de 32 por una medición de tiempo sensible a la carga, hallazgo H-5).
+Cada fila se comprobó leyendo el código y los nombres de las pruebas actuales (módulo y función). Cifras de ejecución medidas por el orquestador el 2026-10-24 (detalle en [INFORME_PRUEBAS.md](INFORME_PRUEBAS.md)): suite normal 507 pruebas aprobadas (419 en 3 ejecuciones consecutivas antes de añadir facturas y la corrección de la fecha de vencimiento); E2E 32 de 32 en las dos últimas ejecuciones completas (la anterior a ellas dio 31 de 32 por una medición de tiempo sensible a la carga, hallazgo H-5).
 
 Aviso sobre el alcance de los enunciados: el informe de auditoría original no está en el repositorio. Los enunciados de F-01 a F-10 se tomaron de la lista de falencias del encargo (no distribuido, vencidos vs retiro, sobrevendición, factura en BD, hash débil, sesiones largas, capa lógica, configuración volátil, hilos bloqueantes, frontend huérfano). La descripción del estado anterior de cada una (columna "Falencia") es una interpretación razonada del sistema monolítico original; si el informe dice otra cosa, ajústese esa columna.
 
@@ -87,5 +87,5 @@ Estados: **Resuelta** (corregida y con prueba que lo demuestra), **Resuelta con 
 
 ## Notas de verificación
 
-- Los nombres de pruebas se leyeron de `tests/` (búsqueda de `def test_`). El número de pruebas ejecutadas (419 + 32) fue medido por el orquestador y consta en `INFORME_PRUEBAS.md`.
+- Los nombres de pruebas se leyeron de `tests/` (búsqueda de `def test_`). El número de pruebas ejecutadas (507 + 32) fue medido por el orquestador y consta en `INFORME_PRUEBAS.md`.
 - Hallazgos H-1 (eventos WS al editar), H-2 (JWT en logs) y H-3 (`localhost` lento) del informe de pruebas están corregidos y con prueba: `tests/application/test_riesgo_inventario.py::test_editar_cualquier_campo_visible_publica_stock_actualizado`, `tests/security/test_logfilter.py`, `tests/client/test_api_client.py::test_url_por_defecto_es_ip_literal_y_la_explicita_se_respeta`, y en E2E `test_05_tiempo_real.py::test_editar_precio_notifica_por_ws`, `test_09_hallazgos.py`.

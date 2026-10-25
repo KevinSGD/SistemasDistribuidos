@@ -147,7 +147,7 @@ Se ejecutaron pruebas automáticas por capas (dominio, aplicación, infraestruct
 
 | Conjunto | Resultado |
 |---|---|
-| Suite normal (`pytest tests`) | 419 pruebas aprobadas en 3 ejecuciones consecutivas (32 E2E deseleccionadas por defecto), ~200 s cada una |
+| Suite normal (`pytest tests`) | 507 pruebas aprobadas (32 E2E deseleccionadas por defecto), ~150 s; las 32 E2E contra el servidor real en Ubuntu también aprobadas |
 | E2E cliente Windows 11 contra servidor Ubuntu 26.04 en WSL2 (`pytest tests/e2e -m e2e`) | 32 pruebas aprobadas, 0 fallidas, 191 s |
 
 Entorno: cliente en Windows 11 con Python 3.13.15, PyQt6 6.7.0; servidor en Ubuntu 26.04 (WSL2) con Python 3.14.4, FastAPI 0.162.0, SQLAlchemy 2.0.48.
