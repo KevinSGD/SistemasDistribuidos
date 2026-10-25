@@ -142,6 +142,17 @@ class ProductoRepo:
         q = select(ProductoORM).where(ProductoORM.activo.is_(True)).order_by(ProductoORM.nombre)
         return [_producto(p) for p in self.s.scalars(q)]
 
+    def listar(self, activos: bool | None = None) -> list[ProductoDominio]:
+        """activos: True solo activos, False solo inactivos, None todos."""
+        q = select(ProductoORM).order_by(ProductoORM.nombre)
+        if activos is not None:
+            q = q.where(ProductoORM.activo.is_(activos))
+        return [_producto(p) for p in self.s.scalars(q)]
+
+    def stock_fresco(self, id: int) -> int | None:
+        """Lee el stock directo de la BD (evita el identity map tras un UPDATE masivo)."""
+        return self.s.scalar(select(ProductoORM.stock).where(ProductoORM.id == id))
+
     def obtener(self, id: int) -> ProductoDominio | None:
         o = self.s.get(ProductoORM, id)
         return _producto(o) if o else None

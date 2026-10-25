@@ -6,3 +6,7 @@ __pycache__/
 .env
 .venv/
 venv/
+build/
+dist/
+*.spec.bak
+scratchpad/

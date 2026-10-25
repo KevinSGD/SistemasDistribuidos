@@ -13,7 +13,6 @@ from server.infrastructure.db.repos import (
     DetalleDTO, FacturaDTO, FacturaRepo, NuevaFactura, ProductoRepo,
 )
 
-from . import consultas_extra
 from .config_service import ConfigService
 from .errores import ROL_ADMIN, ROL_COMPRADOR, ErrorValidacion, exigir_autenticado
 from .eventos import STOCK_ACTUALIZADO, EventBus, evento
@@ -106,7 +105,7 @@ class VentaService:
 
             for l in calculadas:      # el descuento condicional es la defensa real anti-sobreventa
                 if not prod.descontar_stock_atomico(l.producto_id, l.cantidad):
-                    actual = consultas_extra.stock_fresco(s, l.producto_id)
+                    actual = prod.stock_fresco(l.producto_id)
                     raise StockInsuficiente(
                         f"Stock insuficiente para '{l.nombre}'",
                         {"producto_id": l.producto_id, "disponible": actual or 0,
@@ -122,7 +121,7 @@ class VentaService:
                 detalles=tuple(DetalleDTO(
                     l.producto_id, l.nombre, l.cantidad, l.precio_original, l.descuento,
                     l.precio_unitario, l.subtotal) for l in calculadas)))
-            stocks = {pid: consultas_extra.stock_fresco(s, pid) for pid in cambiadas}
+            stocks = {pid: prod.stock_fresco(pid) for pid in cambiadas}
 
         if self._bus is not None:
             for pid, stock in stocks.items():

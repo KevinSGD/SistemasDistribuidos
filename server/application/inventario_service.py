@@ -10,7 +10,6 @@ from server.domain.errors import NoEncontrado
 from server.infrastructure.db.engine import sesion
 from server.infrastructure.db.repos import DescuentoRepo, ProductoRepo
 
-from . import consultas_extra
 from .errores import ErrorValidacion, exigir_admin, exigir_autenticado
 from .eventos import DESCUENTO_CAMBIADO, STOCK_ACTUALIZADO, EventBus, evento
 
@@ -90,7 +89,7 @@ class InventarioService:
     def listar(self, rol: str | None, activos: bool | None = True) -> list[ProductoDominio]:
         exigir_autenticado(rol)
         with sesion(self._factory) as s:
-            return consultas_extra.listar_productos(s, activos)
+            return ProductoRepo(s).listar(activos)
 
     def obtener(self, id: int, rol: str | None) -> ProductoDominio:
         exigir_autenticado(rol)
@@ -148,5 +147,5 @@ class InventarioService:
                 raise NoEncontrado("Producto no encontrado", {"producto_id": id})
             repo.baja_logica(id)
             DescuentoRepo(s).desactivar(id)
-            stock = consultas_extra.stock_fresco(s, id)
+            stock = repo.stock_fresco(id)
         self._publicar_stock(ProductoDominio(id, "", "", 0.0, stock or 0, 0, None, False))

@@ -1,10 +1,10 @@
+import hashlib
 import shutil
 import sqlite3
 from datetime import datetime
 
 import pytest
-from sqlalchemy import create_engine, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
 
 from server.infrastructure.db.engine import sesion
 from server.infrastructure.db.migrar_legacy import main, migrar
@@ -14,40 +14,66 @@ from server.infrastructure.db.orm import (
 from server.infrastructure.db.repos import FacturaRepo
 
 
+# Esquema legacy (monolito v1.0) reproducido con SQL puro, tal como lo creaba SQLAlchemy.
+_DDL_LEGACY = """
+CREATE TABLE usuarios (
+    id INTEGER NOT NULL, nombre VARCHAR(100) NOT NULL, usuario VARCHAR(50) NOT NULL,
+    password VARCHAR(256) NOT NULL, rol VARCHAR(20), activo INTEGER,
+    PRIMARY KEY (id), UNIQUE (usuario));
+CREATE TABLE productos (
+    id INTEGER NOT NULL, nombre VARCHAR(100) NOT NULL, categoria VARCHAR(50) NOT NULL,
+    precio_base FLOAT NOT NULL, stock INTEGER NOT NULL, stock_maximo INTEGER NOT NULL,
+    fecha_vencimiento DATETIME, fecha_ingreso DATETIME, nivel_riesgo VARCHAR(20),
+    activo INTEGER, PRIMARY KEY (id));
+CREATE TABLE ventas (
+    id INTEGER NOT NULL, producto_id INTEGER NOT NULL, cantidad INTEGER NOT NULL,
+    precio_unitario FLOAT NOT NULL, precio_final FLOAT NOT NULL, descuento_aplicado FLOAT,
+    fecha DATETIME, PRIMARY KEY (id), FOREIGN KEY(producto_id) REFERENCES productos (id));
+CREATE TABLE descuentos (
+    id INTEGER NOT NULL, producto_id INTEGER NOT NULL, porcentaje FLOAT NOT NULL,
+    motivo VARCHAR(200) NOT NULL, activo INTEGER, fecha_inicio DATETIME, fecha_fin DATETIME,
+    PRIMARY KEY (id), FOREIGN KEY(producto_id) REFERENCES productos (id));
+"""
+
+
+def _sha(p: str) -> str:
+    return hashlib.sha256(p.encode()).hexdigest()
+
+
+def _ts(d: datetime) -> str:
+    return d.strftime("%Y-%m-%d %H:%M:%S.%f")
+
+
 @pytest.fixture
 def legacy_db(tmp_path):
-    """BD legacy generada con el models.py monolitico actual."""
-    import models  # noqa: F401  (registra tablas en database.Base)
-    from database import Base
-
+    """BD legacy generada con SQL puro (sin importar el monolito)."""
     original = tmp_path / "inventario.db"
-    eng = create_engine(f"sqlite:///{original}")
-    Base.metadata.create_all(eng)
-    with Session(eng) as s:
-        s.add(models.Usuario(nombre="Admin", usuario="admin", rol="admin",
-                             password=models.Usuario.hashear_password("admin123")))
-        s.add(models.Usuario(nombre="Comp", usuario="comprador", rol="usuario",
-                             password=models.Usuario.hashear_password("c123"), activo=0))
-        a = models.Producto(nombre="Leche", categoria="lacteos", precio_base=10.0, stock=20,
-                            stock_maximo=50, fecha_vencimiento=datetime(2026, 5, 1))
-        b = models.Producto(nombre="Pan", categoria="panaderia", precio_base=2.5, stock=5,
-                            stock_maximo=30, activo=0)
-        s.add_all([a, b])
-        s.flush()
-        s.add(models.Descuento(producto_id=a.id, porcentaje=30, motivo="vence pronto"))
-        t0 = datetime(2026, 4, 1, 10, 15, 5)
-        t1 = datetime(2026, 4, 1, 10, 15, 40)  # mismo minuto
-        t2 = datetime(2026, 4, 2, 9, 0, 0)
-        s.add_all([
-            models.Venta(producto_id=a.id, cantidad=2, precio_unitario=10.0, precio_final=14.0,
-                         descuento_aplicado=30, fecha=t0),
-            models.Venta(producto_id=b.id, cantidad=1, precio_unitario=2.5, precio_final=2.5,
-                         descuento_aplicado=0, fecha=t1),
-            models.Venta(producto_id=a.id, cantidad=1, precio_unitario=10.0, precio_final=10.0,
-                         descuento_aplicado=0, fecha=t2),
-        ])
-        s.commit()
-    eng.dispose()
+    con = sqlite3.connect(original)
+    con.executescript(_DDL_LEGACY)
+    ing = _ts(datetime(2026, 3, 1))
+    con.executemany(
+        "INSERT INTO usuarios (nombre, usuario, password, rol, activo) VALUES (?,?,?,?,?)",
+        [("Admin", "admin", _sha("admin123"), "admin", 1),
+         ("Comp", "comprador", _sha("c123"), "usuario", 0)])
+    con.executemany(
+        "INSERT INTO productos (nombre, categoria, precio_base, stock, stock_maximo,"
+        " fecha_vencimiento, fecha_ingreso, nivel_riesgo, activo) VALUES (?,?,?,?,?,?,?,?,?)",
+        [("Leche", "lacteos", 10.0, 20, 50, _ts(datetime(2026, 5, 1)), ing, "normal", 1),
+         ("Pan", "panaderia", 2.5, 5, 30, None, ing, "normal", 0)])
+    con.execute(
+        "INSERT INTO descuentos (producto_id, porcentaje, motivo, activo, fecha_inicio)"
+        " VALUES (1, 30, 'vence pronto', 1, ?)", (ing,))
+    t0 = datetime(2026, 4, 1, 10, 15, 5)
+    t1 = datetime(2026, 4, 1, 10, 15, 40)  # mismo minuto
+    t2 = datetime(2026, 4, 2, 9, 0, 0)
+    con.executemany(
+        "INSERT INTO ventas (producto_id, cantidad, precio_unitario, precio_final,"
+        " descuento_aplicado, fecha) VALUES (?,?,?,?,?,?)",
+        [(1, 2, 10.0, 14.0, 30, _ts(t0)),
+         (2, 1, 2.5, 2.5, 0, _ts(t1)),
+         (1, 1, 10.0, 10.0, 0, _ts(t2))])
+    con.commit()
+    con.close()
     copia = tmp_path / "copia.db"  # se migra siempre sobre una copia
     shutil.copy(original, copia)
     return copia
@@ -79,7 +105,6 @@ def test_migracion_conserva_datos(s, legacy_db):
     migrar(legacy_db, s)
     s.commit()
     admin = s.scalars(select(UsuarioORM).where(UsuarioORM.usuario == "admin")).one()
-    import hashlib
     assert admin.password_hash == "sha256$" + hashlib.sha256(b"admin123").hexdigest()
     assert admin.rol == "admin" and admin.activo is True
     comp = s.scalars(select(UsuarioORM).where(UsuarioORM.usuario == "comprador")).one()
