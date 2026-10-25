@@ -20,8 +20,9 @@ DESCUENTO_CAMBIADO = "descuento_cambiado"
 PRODUCTOS_RETIRADOS = "productos_retirados"
 CONFIG_CAMBIADA = "config_cambiada"
 SESION_CERRADA = "sesion_cerrada"
+FACTURA_CREADA = "factura_creada"
 TIPOS = frozenset({STOCK_ACTUALIZADO, DESCUENTO_CAMBIADO, PRODUCTOS_RETIRADOS,
-                   CONFIG_CAMBIADA, SESION_CERRADA})
+                   CONFIG_CAMBIADA, SESION_CERRADA, FACTURA_CREADA})
 
 Callback = Callable[[dict], None]
 

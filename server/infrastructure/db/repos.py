@@ -5,10 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from sqlalchemy import select, text, update
-from sqlalchemy.orm import Session
+from sqlalchemy import func, or_, select, text, update
+from sqlalchemy.orm import Session, selectinload
 
 from server.domain.entities import ProductoDominio
+
+from .engine import normalizar_texto
 
 from .orm import (
     ConfiguracionORM, DescuentoORM, DetalleFacturaORM, FacturaORM, ProductoORM,
@@ -77,6 +79,7 @@ class FacturaDTO:
     cambio: float | None
     usuario_id: int | None
     detalles: tuple[DetalleDTO, ...] = field(default_factory=tuple)
+    usuario_nombre: str | None = None     # nombre de la cuenta que hizo la compra (join)
 
 
 @dataclass(frozen=True)
@@ -119,7 +122,7 @@ def _sesion(o: SesionORM) -> SesionDTO:
                      bool(o.cerrada), o.motivo_cierre)
 
 
-def _factura(o: FacturaORM) -> FacturaDTO:
+def _factura(o: FacturaORM, usuario_nombre: str | None = None) -> FacturaDTO:
     return FacturaDTO(
         id=o.id, numero=o.numero, fecha=o.fecha, cliente_nombre=o.cliente_nombre,
         cliente_documento=o.cliente_documento, metodo_pago=o.metodo_pago,
@@ -130,6 +133,7 @@ def _factura(o: FacturaORM) -> FacturaDTO:
                        d.descuento_pct, d.precio_final, d.subtotal)
             for d in o.detalles
         ),
+        usuario_nombre=usuario_nombre,
     )
 
 
@@ -276,26 +280,92 @@ class FacturaRepo:
         )
         self.s.add(o)
         self.s.flush()
-        return _factura(o)
+        nombre = (self.s.scalar(select(UsuarioORM.nombre).where(UsuarioORM.id == nf.usuario_id))
+                  if nf.usuario_id is not None else None)
+        return _factura(o, nombre)
+
+    @staticmethod
+    def _con_usuario():
+        return (select(FacturaORM, UsuarioORM.nombre)
+                .outerjoin(UsuarioORM, UsuarioORM.id == FacturaORM.usuario_id)
+                .options(selectinload(FacturaORM.detalles)))
 
     def obtener_por_numero(self, numero: str) -> FacturaDTO | None:
-        o = self.s.scalars(select(FacturaORM).where(FacturaORM.numero == numero)).first()
-        return _factura(o) if o else None
+        fila = self.s.execute(self._con_usuario().where(FacturaORM.numero == numero)).first()
+        return _factura(fila[0], fila[1]) if fila else None
+
+    @staticmethod
+    def _condiciones(desde: datetime | None, hasta: datetime | None, usuario_id: int | None,
+                     q: str | None, metodo_pago: str | None) -> list:
+        """Filtros comunes de listar() y resumen(). `q` busca (sin mayusculas ni tildes) en
+        numero, nombre y documento del cliente."""
+        c = []
+        if desde is not None:
+            c.append(FacturaORM.fecha >= desde)
+        if hasta is not None:
+            c.append(FacturaORM.fecha <= hasta)
+        if usuario_id is not None:
+            c.append(FacturaORM.usuario_id == usuario_id)
+        if metodo_pago:
+            c.append(FacturaORM.metodo_pago == metodo_pago)
+        texto = normalizar_texto((q or "").strip())
+        if texto:
+            esc = texto.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            patron = f"%{esc}%"
+            c.append(or_(
+                func.norm(FacturaORM.numero).like(patron, escape="\\"),
+                func.norm(FacturaORM.cliente_nombre).like(patron, escape="\\"),
+                func.norm(FacturaORM.cliente_documento).like(patron, escape="\\")))
+        return c
 
     def listar(self, desde: datetime | None = None, hasta: datetime | None = None,
                usuario_id: int | None = None, limite: int | None = None,
-               offset: int = 0) -> list[FacturaDTO]:
-        q = select(FacturaORM)
-        if desde is not None:
-            q = q.where(FacturaORM.fecha >= desde)
-        if hasta is not None:
-            q = q.where(FacturaORM.fecha <= hasta)
-        if usuario_id is not None:
-            q = q.where(FacturaORM.usuario_id == usuario_id)
-        q = q.order_by(FacturaORM.fecha.desc(), FacturaORM.id.desc()).offset(offset)
+               offset: int = 0, q: str | None = None,
+               metodo_pago: str | None = None) -> list[FacturaDTO]:
+        stmt = (self._con_usuario()
+                .where(*self._condiciones(desde, hasta, usuario_id, q, metodo_pago))
+                .order_by(FacturaORM.fecha.desc(), FacturaORM.id.desc()).offset(offset))
         if limite is not None:
-            q = q.limit(limite)
-        return [_factura(o) for o in self.s.scalars(q)]
+            stmt = stmt.limit(limite)
+        return [_factura(o, nombre) for o, nombre in self.s.execute(stmt).all()]
+
+    def resumen(self, desde: datetime | None = None, hasta: datetime | None = None,
+                usuario_id: int | None = None, q: str | None = None,
+                metodo_pago: str | None = None) -> dict:
+        """Totales calculados en SQL (COUNT/SUM) sobre el mismo filtro que listar()."""
+        cond = self._condiciones(desde, hasta, usuario_id, q, metodo_pago)
+        cant, sub, aho, iva, tot, fmin, fmax = self.s.execute(
+            select(func.count(FacturaORM.id), func.coalesce(func.sum(FacturaORM.subtotal), 0),
+                   func.coalesce(func.sum(FacturaORM.ahorro), 0),
+                   func.coalesce(func.sum(FacturaORM.iva), 0),
+                   func.coalesce(func.sum(FacturaORM.total), 0),
+                   func.min(FacturaORM.fecha), func.max(FacturaORM.fecha)).where(*cond)
+        ).one()
+        por_metodo = [
+            {"metodo": m, "cantidad": int(n), "total": int(round(t))}
+            for m, n, t in self.s.execute(
+                select(FacturaORM.metodo_pago, func.count(FacturaORM.id),
+                       func.coalesce(func.sum(FacturaORM.total), 0))
+                .where(*cond).group_by(FacturaORM.metodo_pago)
+                .order_by(func.sum(FacturaORM.total).desc(), FacturaORM.metodo_pago))]
+        top = [
+            {"nombre": n, "unidades": int(u), "total": int(round(t))}
+            for n, u, t in self.s.execute(
+                select(DetalleFacturaORM.nombre_producto, func.sum(DetalleFacturaORM.cantidad),
+                       func.sum(DetalleFacturaORM.subtotal))
+                .join(FacturaORM, FacturaORM.id == DetalleFacturaORM.factura_id)
+                .where(*cond).group_by(DetalleFacturaORM.nombre_producto)
+                .order_by(func.sum(DetalleFacturaORM.cantidad).desc(),
+                          func.sum(DetalleFacturaORM.subtotal).desc(),
+                          DetalleFacturaORM.nombre_producto)
+                .limit(5))]
+        cant = int(cant)
+        return {
+            "cantidad": cant, "subtotal": int(round(sub)), "ahorro": int(round(aho)),
+            "iva": int(round(iva)), "total": int(round(tot)),
+            "ticket_promedio": int(round(tot / cant)) if cant else 0,
+            "por_metodo": por_metodo, "top_productos": top, "desde": fmin, "hasta": fmax,
+        }
 
 
 class UsuarioRepo:

@@ -14,8 +14,8 @@ from pydantic import BaseModel, ValidationError
 from shared.schemas import (
     ActividadOut, AlertasOut, CompraIn, ConfigOut, ConfigPublicaOut, ConfigUpdate,
     EscaneoOut, FacturaOut, HealthOut, ItemRiesgo, LoginIn, LoginOut, MensajeOut,
-    ProductoIn, ProductoOut, ProductoUpdate, ResumenRiesgoOut, SesionOut, UsuarioIn,
-    UsuarioOut, UsuarioUpdate,
+    ProductoIn, ProductoOut, ProductoUpdate, ResumenFacturasOut, ResumenRiesgoOut, SesionOut,
+    UsuarioIn, UsuarioOut, UsuarioUpdate,
 )
 
 from .config import TIMEOUT_CONEXION, TIMEOUT_LECTURA, normalizar_url
@@ -222,16 +222,40 @@ class ApiClient:
     def obtener_factura(self, numero: str) -> FacturaOut:
         return self._modelo(FacturaOut, self._pedir("GET", f"/facturas/{numero}"))
 
-    def listar_facturas(self, desde: datetime | None = None, hasta: datetime | None = None,
-                        limite: int | None = None) -> list[FacturaOut]:
+    @staticmethod
+    def _filtros_facturas(desde, hasta, q, metodo_pago, usuario_id) -> dict[str, Any]:
         params: dict[str, Any] = {}
         if desde:
             params["desde"] = desde.isoformat()
         if hasta:
             params["hasta"] = hasta.isoformat()
+        if q and q.strip():
+            params["q"] = q.strip()
+        if metodo_pago:
+            params["metodo_pago"] = metodo_pago
+        if usuario_id:
+            params["usuario_id"] = usuario_id
+        return params
+
+    def listar_facturas(self, desde: datetime | None = None, hasta: datetime | None = None,
+                        limite: int | None = None, *, q: str | None = None,
+                        metodo_pago: str | None = None, usuario_id: int | None = None,
+                        offset: int = 0) -> list[FacturaOut]:
+        """Historial (admin: todas; comprador: las suyas). Mas recientes primero."""
+        params = self._filtros_facturas(desde, hasta, q, metodo_pago, usuario_id)
         if limite:
             params["limite"] = limite
+        if offset:
+            params["offset"] = offset
         return self._lista(FacturaOut, self._pedir("GET", "/facturas", params=params))
+
+    def resumen_facturas(self, desde: datetime | None = None, hasta: datetime | None = None,
+                         *, q: str | None = None, metodo_pago: str | None = None,
+                         usuario_id: int | None = None) -> ResumenFacturasOut:
+        """Totales agregados con los mismos filtros que listar_facturas (solo admin)."""
+        params = self._filtros_facturas(desde, hasta, q, metodo_pago, usuario_id)
+        return self._modelo(ResumenFacturasOut, self._pedir(
+            "GET", "/facturas/resumen", params=params))
 
     # -- configuracion --------------------------------------------------------------------
     def obtener_config(self) -> ConfigOut:

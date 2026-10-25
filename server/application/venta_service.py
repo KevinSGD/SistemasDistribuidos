@@ -14,9 +14,11 @@ from server.infrastructure.db.repos import (
 )
 
 from .config_service import ConfigService
-from .errores import ROL_ADMIN, ROL_COMPRADOR, ErrorValidacion, exigir_autenticado
-from .eventos import STOCK_ACTUALIZADO, EventBus, evento
+from .errores import ROL_ADMIN, ROL_COMPRADOR, ErrorValidacion, exigir_admin, exigir_autenticado
+from .eventos import FACTURA_CREADA, STOCK_ACTUALIZADO, EventBus, evento
 
+LIMITE_DEFECTO = 200
+LIMITE_MAXIMO = 1000
 EFECTIVO = "efectivo"
 TARJETA = "tarjeta_simulada"
 METODOS = (EFECTIVO, TARJETA)
@@ -34,6 +36,7 @@ def factura_a_dict(f: FacturaDTO, negocio: dict) -> dict:
         "subtotal": f.subtotal, "ahorro": f.ahorro, "iva": f.iva, "total": f.total,
         "metodo_pago": f.metodo_pago, "efectivo_recibido": f.efectivo_recibido,
         "cambio": f.cambio, "usuario_id": f.usuario_id,
+        "usuario_nombre": f.usuario_nombre,
     }
 
 
@@ -127,6 +130,10 @@ class VentaService:
             for pid, stock in stocks.items():
                 self._bus.publicar(evento(STOCK_ACTUALIZADO, {
                     "producto_id": pid, "stock": stock, "activo": True}))
+            # Solo para el admin (refresco en vivo de su pantalla de facturas); tras el commit.
+            self._bus.publicar(evento(FACTURA_CREADA, {
+                "numero": factura.numero, "total": factura.total,
+                "metodo_pago": factura.metodo_pago}, para="admin"))
         return factura_a_dict(factura, self._negocio(cfg))
 
     def obtener_factura(self, numero: str, usuario_id: int, rol: str | None) -> dict:
@@ -138,12 +145,44 @@ class VentaService:
             raise NoEncontrado("Factura no encontrada", {"numero": numero})
         return factura_a_dict(f, self._negocio(self._config.valores()))
 
+    @staticmethod
+    def _filtro_usuario(usuario_id: int, rol: str | None, filtro_usuario: int | None):
+        """Comprador: siempre solo las suyas (se ignora `filtro_usuario`). Admin: opcional."""
+        return filtro_usuario if rol == ROL_ADMIN else usuario_id
+
+    @staticmethod
+    def _validar_metodo(metodo_pago: str | None) -> str | None:
+        if metodo_pago in (None, ""):
+            return None
+        if metodo_pago not in METODOS:
+            raise ErrorValidacion("Método de pago inválido", {"validos": list(METODOS)})
+        return metodo_pago
+
     def listar_facturas(self, usuario_id: int, rol: str | None,
                         desde: datetime | None = None, hasta: datetime | None = None,
-                        limite: int | None = None) -> list[dict]:
+                        limite: int | None = None, offset: int = 0, q: str | None = None,
+                        metodo_pago: str | None = None,
+                        filtro_usuario_id: int | None = None) -> list[dict]:
+        """Historial, mas recientes primero. Lectura solamente: las facturas son inmutables."""
         exigir_autenticado(rol)
-        filtro = None if rol == ROL_ADMIN else usuario_id
+        limite = LIMITE_DEFECTO if limite is None else limite
+        if isinstance(limite, bool) or not 1 <= limite <= LIMITE_MAXIMO:
+            raise ErrorValidacion(f"limite debe estar entre 1 y {LIMITE_MAXIMO}", {"limite": limite})
+        if isinstance(offset, bool) or offset < 0:
+            raise ErrorValidacion("offset debe ser >= 0", {"offset": offset})
+        metodo_pago = self._validar_metodo(metodo_pago)
+        filtro = self._filtro_usuario(usuario_id, rol, filtro_usuario_id)
         with sesion(self._factory) as s:
-            fs = FacturaRepo(s).listar(desde, hasta, filtro, limite)
+            fs = FacturaRepo(s).listar(desde, hasta, filtro, limite, offset, q, metodo_pago)
         negocio = self._negocio(self._config.valores())
         return [factura_a_dict(f, negocio) for f in fs]
+
+    def resumen_facturas(self, rol: str | None, desde: datetime | None = None,
+                         hasta: datetime | None = None, q: str | None = None,
+                         metodo_pago: str | None = None,
+                         filtro_usuario_id: int | None = None) -> dict:
+        """Totales agregados (solo admin) con los mismos filtros que listar_facturas."""
+        exigir_admin(rol)
+        metodo_pago = self._validar_metodo(metodo_pago)
+        with sesion(self._factory) as s:
+            return FacturaRepo(s).resumen(desde, hasta, filtro_usuario_id, q, metodo_pago)

@@ -18,7 +18,9 @@ from ..widgets import DocumentoFactura, Toast
 class FacturaDialog(QDialog):
     pdf_generado = pyqtSignal(object)          # Path
 
-    def __init__(self, app_ctx, factura, iva_pct: float = 0.0, parent: QWidget | None = None):
+    def __init__(self, app_ctx, factura, iva_pct: float = 0.0, parent: QWidget | None = None,
+                 modo_consulta: bool = False):
+        """`modo_consulta`: factura ya emitida (auditoria del administrador); solo lectura."""
         super().__init__(parent)
         self._ctx = app_ctx
         self.factura = factura
@@ -47,7 +49,12 @@ class FacturaDialog(QDialog):
         metodo = METODOS.get(self.datos.get("metodo_pago", ""), "")
         if self.datos.get("metodo_pago") == "tarjeta_simulada":
             metodo += " · autorizada"
-        self.lbl_estado = QLabel(f"Compra registrada · {metodo}")
+        if modo_consulta:
+            cuenta = self.datos.get("usuario_nombre")
+            texto_estado = f"Factura emitida · {metodo}" + (f" · Cuenta: {cuenta}" if cuenta else "")
+        else:
+            texto_estado = f"Compra registrada · {metodo}"
+        self.lbl_estado = QLabel(texto_estado)
         self.lbl_estado.setStyleSheet(f"font-size: 12px; color: {COLORES['exito_texto']}; font-weight: 600;")
         self.lbl_estado.setWordWrap(True)
         col.addWidget(titulo)

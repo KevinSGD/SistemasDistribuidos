@@ -53,7 +53,8 @@ def test_compra_exitosa_valores_y_eventos(ventas, factory, usuarios, crear_produ
         == (10000, 50.0, 5000, 10000)
     assert f["cliente"] == CLI and f["negocio"]["nombre_negocio"] == "Mi Negocio"
     assert stock(factory, p.id) == 18 and stock(factory, q.id) == 9
-    ev = {(e["tipo"], e["payload"]["producto_id"]): e["payload"]["stock"] for e in eventos}
+    ev = {(e["tipo"], e["payload"]["producto_id"]): e["payload"]["stock"]
+          for e in eventos if e["tipo"] == "stock_actualizado"}
     assert ev == {("stock_actualizado", p.id): 18, ("stock_actualizado", q.id): 9}
     assert ventas.comprar(c1, [linea(q.id, 1)], CLI, TARJ)["numero"] == "FAC-000002"
 

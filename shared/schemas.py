@@ -210,6 +210,33 @@ class FacturaOut(_Salida):
     efectivo_recibido: float | None = None
     cambio: float | None = None
     usuario_id: int | None = None
+    usuario_nombre: str | None = None   # cuenta que hizo la compra (no confundir con `cliente`)
+
+
+class VentaMetodoOut(_Salida):
+    metodo: str
+    cantidad: int
+    total: int
+
+
+class TopProductoOut(_Salida):
+    nombre: str
+    unidades: int
+    total: int
+
+
+class ResumenFacturasOut(_Salida):
+    """GET /facturas/resumen (solo admin). Montos enteros; `desde`/`hasta` = rango real."""
+    cantidad: int
+    subtotal: int
+    ahorro: int
+    iva: int
+    total: int
+    ticket_promedio: int
+    por_metodo: list[VentaMetodoOut] = Field(default_factory=list)
+    top_productos: list[TopProductoOut] = Field(default_factory=list)
+    desde: datetime | None = None
+    hasta: datetime | None = None
 
 
 # -- configuracion -------------------------------------------------------------------------
@@ -288,5 +315,5 @@ class UsuarioUpdate(_Entrada):
 class EventoWS(_Salida):
     """Mensaje servidor -> cliente por /ws."""
     evento: Literal["stock_actualizado", "descuento_cambiado", "productos_retirados",
-                    "config_cambiada", "sesion_cerrada"]
+                    "config_cambiada", "sesion_cerrada", "factura_creada"]
     payload: dict

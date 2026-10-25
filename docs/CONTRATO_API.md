@@ -36,6 +36,10 @@ Regla: ninguna otra ruta ni el WebSocket renuevan `ultima_actividad`. Al validar
 | POST | `/productos` | Crear (201) |
 | PUT | `/productos/{id}` | Editar |
 | DELETE | `/productos/{id}` | Baja lógica (204) |
+
+**Semántica de `fecha_vencimiento`.** Una fecha SIN hora (medianoche exacta, `00:00:00`, p. ej. `"2026-10-24"` o `"2026-10-24T00:00:00"`) significa "válido hasta el final de ese día": el servidor la normaliza y guarda como `23:59:59` del mismo día, en `POST` y `PUT` (fuente única de verdad, válida para cualquier cliente). Un producto que vence hoy sigue en ofertas (nivel crítico, "Vence hoy") y se puede vender hasta las 23:59:59; solo se considera vencido y se retira cuando pasa ese instante. Las fechas con hora explícita distinta de `00:00:00` se respetan tal cual. Al arrancar, el servidor normaliza de forma idempotente los productos activos ya guardados a medianoche con fecha de hoy o futura.
+
+**Reactivar.** `PUT /productos/{id}` con `{"activo": true}` reactiva un producto inactivo. Si su fecha de vencimiento ya pasó se rechaza con 422 (`fecha_vencimiento`): hay que enviar en la misma petición una fecha nueva. Para listar todos hay que pedir `activos=true` y `activos=false`.
 | GET | `/ofertas` | (comprador/admin) productos con descuento activo, con precio final y motivo |
 
 ## Riesgo (admin)
@@ -50,9 +54,21 @@ Regla: ninguna otra ruta ni el WebSocket renuevan `ultima_actividad`. Al validar
 |---|---|---|
 | POST | `/compras` | `{items:[{producto_id,cantidad}], cliente{nombre,documento}, pago{metodo, efectivo_recibido}}` → factura completa (201). `metodo`: `efectivo` \| `tarjeta_simulada`. Atómico; falla entero si algún ítem es inválido |
 | GET | `/facturas/{numero}` | Datos de factura para vista previa y PDF |
-| GET | `/facturas?desde=&hasta=&limite=` | Historial (fechas ISO 8601) (admin: todas; comprador: las suyas) |
+| GET | `/facturas?desde=&hasta=&q=&metodo_pago=&usuario_id=&limite=&offset=` | Historial, más recientes primero (admin: todas; comprador: solo las suyas). Ver filtros abajo |
+| GET | `/facturas/resumen?desde=&hasta=&q=&metodo_pago=&usuario_id=` | **Solo admin** (403 `ROL_NO_PERMITIDO` al comprador). Totales del mismo filtro, calculados con SUM/COUNT en SQL |
 
-La factura incluye: número consecutivo, fecha/hora, datos del negocio (de configuración), cliente, ítems (precio original, % descuento, precio final, subtotal), subtotal sin descuento, ahorro, total, método de pago, efectivo recibido y cambio.
+**Filtros de `GET /facturas` y `/facturas/resumen`** (todos opcionales y combinables con AND):
+- `desde`, `hasta`: fechas ISO 8601, límites inclusivos sobre la fecha de la factura. Una fecha sin hora (`2026-06-30`) equivale a las 00:00:00; para incluir todo un día hasta el final envíe `2026-06-30T23:59:59.999999` (el cliente de escritorio lo hace así).
+- `q`: texto (máx. 100) que se busca como subcadena en número (`FAC-000012`), nombre del cliente y documento del cliente, sin distinguir mayúsculas ni tildes (`jose` encuentra «José»); `%` y `_` se toman literalmente. No busca en el nombre de la cuenta.
+- `metodo_pago`: `efectivo` o `tarjeta_simulada` (otro valor: 422).
+- `usuario_id`: solo para admin; filtra por la cuenta que hizo la compra. Un comprador siempre ve únicamente las suyas y este parámetro se ignora.
+- `limite` (def. 200, 1 a 1000) y `offset` (def. 0, >= 0), solo en la lista. Valores fuera de rango: 422 `VALIDACION`.
+
+`GET /facturas/resumen` responde `{cantidad, subtotal, ahorro, iva, total, ticket_promedio, por_metodo:[{metodo, cantidad, total}], top_productos:[{nombre, unidades, total}], desde, hasta}`. Montos enteros (pesos). `subtotal` es sin descuento; `total` es la suma de los totales de factura (con IVA); `por_metodo` va de mayor a menor total; `top_productos` son los 5 más vendidos por unidades (suma de `total` = subtotal de líneas, sin IVA); `desde`/`hasta` son la fecha de la factura más antigua y de la más reciente que cumplen el filtro (`null` si no hay). `ticket_promedio` = `total / cantidad` redondeado (0 si no hay facturas). La ruta se declara antes de `/facturas/{numero}`.
+
+Las facturas son **inmutables**: no existen rutas para anularlas, editarlas ni borrarlas (cualquier `PUT`/`PATCH`/`DELETE` sobre `/facturas...` responde 404/405).
+
+La factura incluye: número consecutivo, fecha/hora, datos del negocio (de configuración), cliente, ítems (precio original, % descuento, precio final, subtotal), subtotal sin descuento, ahorro, total, método de pago, efectivo recibido y cambio. Además `usuario_id` y `usuario_nombre`: la cuenta que realizó la compra (`null` en facturas históricas migradas sin usuario); no confundir con `cliente`, que es lo que digitó el comprador.
 
 ## Configuración (admin escribe; resto lee lo que necesita)
 | Método | Ruta | Descripción |
@@ -77,8 +93,9 @@ Claves nuevas de sesión: `inactividad_segundos` (def. **180**, rango 30–3600)
 | `descuento_cambiado` | `{producto_id, porcentaje, motivo}` | todos |
 | `productos_retirados` | `{nombres:[...]}` | admin |
 | `config_cambiada` | `{claves:[...]}` | todos |
+| `factura_creada` | `{numero, total, metodo_pago}` | admin |
 | `sesion_cerrada` | `{motivo}` | el usuario afectado |
 
-`stock_actualizado` se publica al crear, vender, dar de baja y al editar CUALQUIER campo de un producto (precio_base, stock_maximo, fecha_vencimiento, nombre, categoria, stock, activo), no solo stock/activo: es la señal de "vuelve a pedir este producto" y los clientes refrescan su lista al recibirlo. Al desactivar un producto con descuento vigente se publica además `descuento_cambiado` con `porcentaje: 0`. No se añadió un evento nuevo. `sesion_cerrada.motivo`: `logout`, `inactividad`, `usuario_desactivado`, `password_cambiada`, `rol_cambiado`, `usuario_inactivo`, `revocada` (valor por defecto de `cerrar_sesiones_de`), `token_invalido`. Un `sesion_cerrada` solo cierra el socket si ESA sesión ya no es válida (cerrar otra sesión del mismo usuario no lo afecta).
+`factura_creada` se publica DESPUÉS de confirmar la transacción de `POST /compras` (nunca si la compra falla) y solo al admin (`para="admin"`): es la señal para refrescar la pantalla Facturas en vivo; el comprador no lo recibe. `stock_actualizado` se publica al crear, vender, dar de baja y al editar CUALQUIER campo de un producto (precio_base, stock_maximo, fecha_vencimiento, nombre, categoria, stock, activo), no solo stock/activo: es la señal de "vuelve a pedir este producto" y los clientes refrescan su lista al recibirlo. Al desactivar un producto con descuento vigente se publica además `descuento_cambiado` con `porcentaje: 0`. No se añadió un evento nuevo. `sesion_cerrada.motivo`: `logout`, `inactividad`, `usuario_desactivado`, `password_cambiada`, `rol_cambiado`, `usuario_inactivo`, `revocada` (valor por defecto de `cerrar_sesiones_de`), `token_invalido`. Un `sesion_cerrada` solo cierra el socket si ESA sesión ya no es válida (cerrar otra sesión del mismo usuario no lo afecta).
 
 Cierre con código 4401 (tras aceptar la conexión) si el token es inválido o la sesión caducó. El servidor revalida cada ~5 s los sockets abiertos (sin renovar actividad) y cierra con 4401, tras enviar `sesion_cerrada`, si caducó por inactividad o por `sesion_maxima_minutos`. Si el cliente pierde el socket, reconecta con backoff y mientras tanto usa polling cada 60 s.

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import unicodedata
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
@@ -20,7 +21,16 @@ def ruta_db_por_defecto() -> Path:
     return Path(user_data_dir("InventarioApp")) / "servidor.db"
 
 
+def normalizar_texto(valor: str | None) -> str:
+    """Minusculas y sin tildes (para busquedas): 'Pérez' -> 'perez'."""
+    if not valor:
+        return ""
+    d = unicodedata.normalize("NFKD", str(valor))
+    return "".join(c for c in d if not unicodedata.combining(c)).casefold()
+
+
 def _activar_pragmas(dbapi_con, _record) -> None:
+    dbapi_con.create_function("norm", 1, normalizar_texto, deterministic=True)
     cur = dbapi_con.cursor()
     try:
         cur.execute("PRAGMA foreign_keys=ON")

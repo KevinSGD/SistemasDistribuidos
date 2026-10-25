@@ -15,6 +15,7 @@ Es una aplicación distribuida de dos nodos: un servidor FastAPI en Ubuntu (WSL2
 7. Un escaneo en el servidor (cada 60 s) retira los vencidos y aplica los descuentos: crítico 50 %, alto 30 %, sobrestock 10 %; el stock bajo solo alerta.
 8. Las compras son atómicas (sin sobreventa), generan factura con detalle en la base de datos y el IVA se calcula sobre el precio con descuento.
 9. Los cambios se avisan en tiempo real por WebSocket; si el socket cae, el cliente reconecta y consulta cada 60 s.
+   El administrador tiene una pantalla de Facturas de solo consulta y auditoría (filtros, totales, detalle y exportación a Excel); las facturas son inmutables y no se pueden anular, editar ni borrar (RF-26).
 10. Limitaciones asumidas: una sola máquina física, HTTP sin TLS, sin réplicas ni balanceo y un solo worker. Detalle y diagramas en [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md).
 
 ## Requisitos

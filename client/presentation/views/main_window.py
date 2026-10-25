@@ -16,6 +16,7 @@ from .alerts_view import AlertsView
 from .barra_estado import instalar_barra_estado
 from .config_view import ConfigView
 from .dashboard import DashboardView
+from .facturas_view import FacturasView
 from .inventory_view import InventoryView
 from .usuarios_view import UsuariosView
 
@@ -24,6 +25,7 @@ VISTAS = (
     ("dashboard", "Dashboard", DashboardView),
     ("inventario", "Inventario", InventoryView),
     ("alertas", "Alertas", AlertsView),
+    ("facturas", "Facturas", FacturasView),
     ("usuarios", "Usuarios", UsuariosView),
     ("configuracion", "Configuración", ConfigView),
 )
@@ -33,8 +35,9 @@ _EVENTOS = {
     "descuento_cambiado": _DATOS_PRODUCTOS,
     "productos_retirados": _DATOS_PRODUCTOS,
     "config_cambiada": (*_DATOS_PRODUCTOS, "configuracion"),
+    "factura_creada": ("facturas",),
 }
-_SONDEO = (*_DATOS_PRODUCTOS, "usuarios", "configuracion")
+_SONDEO = (*_DATOS_PRODUCTOS, "facturas", "usuarios", "configuracion")
 MAX_NOMBRES_AVISO = 5
 DEBOUNCE_MS = 250
 
@@ -172,6 +175,8 @@ class MainWindow(QMainWindow):
     def _al_evento(self, nombre: str, payload: dict) -> None:
         if nombre == "productos_retirados":
             self.avisar_retirados(payload.get("nombres") or [])
+        elif nombre == "factura_creada" and self.vista_actual() == "facturas":
+            self.vistas["facturas"].avisar_nueva(payload)      # aviso discreto, sin pisar filtros
         destino = _EVENTOS.get(nombre)
         if destino:
             self._encolar(destino)

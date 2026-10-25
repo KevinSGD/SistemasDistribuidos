@@ -917,12 +917,35 @@ token tiene una vigencia máxima absoluta (por defecto 480 minutos).
 **Nombre** Notificaciones en tiempo real por WebSocket con respaldo de sondeo (nuevo)
 **Descripción** El servidor notifica a los clientes conectados los eventos
 stock_actualizado, descuento_cambiado, productos_retirados (solo
-administrador), config_cambiada y sesion_cerrada, de modo que las vistas
+administrador), config_cambiada, sesion_cerrada y factura_creada (solo
+administrador), de modo que las vistas
 (catálogo, inventario, alertas, dashboard) se refrescan sin que el usuario haga
 nada. Si la conexión se pierde, el cliente reconecta con espera creciente y mientras tanto
 consulta los datos cada 60 segundos; al reconectar hace una consulta de
 resincronización. La barra de estado indica si el servidor está en línea, el sistema
 operativo del servidor y si hay eventos en vivo.
+**Prioridad** Alta
+
+**ID Requerimiento** RF- 26
+**Nombre** Control de facturas del administrador (nuevo)
+**Descripción** El administrador dispone de la vista Facturas, de solo consulta y
+auditoría: las facturas son inmutables (no se anulan, no se editan y no se
+borran; el sistema no ofrece ninguna operación que las modifique). La vista
+lista todas las facturas, de la más reciente a la más antigua, con número,
+fecha y hora, cliente, documento, método de pago, cuenta de usuario que realizó
+la compra, ahorro y total, y permite filtrar por rango de fechas (atajos Hoy,
+7 días, Este mes y Todo), por texto (número, nombre o documento del cliente, sin
+distinguir mayúsculas ni tildes) y por método de pago. Muestra tarjetas con los
+totales del filtro (cantidad de facturas, total vendido, ahorro otorgado, IVA y
+ticket promedio), las ventas por método de pago y los 5 productos más vendidos;
+estos totales los calcula el servidor con SUM/COUNT sobre los mismos filtros
+(GET /facturas/resumen, solo administrador; el comprador recibe 403). Con doble
+clic o el botón "Ver factura" se abre la factura en modo consulta, con
+"Guardar / Imprimir PDF". El botón "Exportar a Excel" genera un archivo con las
+filas visibles y una hoja de resumen en la carpeta de reportes. La vista se
+refresca en vivo con el evento factura_creada (solo para el administrador,
+publicado tras confirmar la compra) y con el sondeo, sin perder los filtros del
+usuario. Un comprador sigue viendo únicamente sus propias facturas.
 **Prioridad** Alta
 
 ### Requerimientos No Funcionales Del Sistema
