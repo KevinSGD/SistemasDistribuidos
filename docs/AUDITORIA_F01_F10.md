@@ -1,0 +1,89 @@
+# Matriz de las falencias F-01 a F-10 de la auditoría
+
+Cada fila se comprobó leyendo el código y los nombres de las pruebas actuales (módulo y función). Las cifras de ejecución (398 pruebas normales y 32 E2E aprobadas) son las que registra [INFORME_PRUEBAS.md](INFORME_PRUEBAS.md) (2026-10-24); quien redactó este documento no volvió a ejecutarlas.
+
+Aviso sobre el alcance de los enunciados: el informe de auditoría original no está en el repositorio. Los enunciados de F-01 a F-10 se tomaron de la lista de falencias del encargo (no distribuido, vencidos vs retiro, sobrevendición, factura en BD, hash débil, sesiones largas, capa lógica, configuración volátil, hilos bloqueantes, frontend huérfano). La descripción del estado anterior de cada una (columna "Falencia") es una interpretación razonada del sistema monolítico original; si el informe dice otra cosa, ajústese esa columna.
+
+Estados: **Resuelta** (corregida y con prueba que lo demuestra), **Resuelta con reservas** (corregida, pero con una limitación que se declara).
+
+## Resumen
+
+| ID | Falencia (estado original) | Estado | Evidencia principal |
+|---|---|---|---|
+| F-01 | Sistema no distribuido: un solo programa de escritorio con BD local | Resuelta con reservas | `server/`, `client/`; `tests/e2e/test_01_entorno.py` |
+| F-02 | Un producto vencido recibía descuento y se vendía en vez de retirarse | Resuelta | `tests/domain/test_riesgo.py::test_vencido_sin_descuento` |
+| F-03 | Sobrevendición: el stock se comprobaba y descontaba sin condición atómica | Resuelta con reservas | `tests/application/test_venta.py::test_muchos_hilos_nunca_sobrevenden` |
+| F-04 | Sin factura en la base de datos (solo ventas sueltas) | Resuelta con reservas | `tests/infra/test_db.py::test_factura_roundtrip_y_filtros` |
+| F-05 | Hash de contraseñas débil (SHA-256 sin sal) | Resuelta con reservas | `tests/security/test_seguridad.py::test_argon2id_hash_y_verificacion` |
+| F-06 | Sesión sin caducidad por inactividad | Resuelta con reservas | `tests/security/test_seguridad.py::test_inactividad_179_vive_181_muere` |
+| F-07 | Lógica de negocio mezclada con interfaz y datos | Resuelta con reservas | estructura `server/domain`, `application`; `tests/domain/` |
+| F-08 | Configuración volátil (diccionario en memoria) | Resuelta con reservas | `tests/application/test_config.py::test_actualizar_persiste_y_publica_evento` |
+| F-09 | Trabajo bloqueante en el hilo de la interfaz | Resuelta | `tests/e2e/test_03_servidor_caido.py` |
+| F-10 | Frontend huérfano: interfaz acoplada al monolito sin pasar por una API | Resuelta con reservas | `tests/e2e/test_08_servidor_linux.py::test_flujo_admin_por_la_ui_recorre_todas_las_vistas` |
+
+## Detalle
+
+### F-01 No distribuido
+
+- **Qué se hizo.** Dos nodos: servidor FastAPI en Ubuntu/WSL2 (`python -m server.main`, `server/main.py`) y cliente PyQt6 en Windows (`python -m client.main`). Comunicación HTTP + WebSocket (`server/api/app.py`, `server/api/ws.py`, `client/infrastructure/api_client.py`, `event_client.py`). El cliente no importa `server/`, `sqlalchemy` ni módulos del monolito (búsqueda de imports en `client/`: sin coincidencias; solo usa `shared/`).
+- **Pruebas.** `tests/e2e/test_01_entorno.py::test_health_desde_windows_dice_linux` (el proceso de pruebas es `Windows` y `GET /health` responde `"so":"Linux"`), `::test_el_proceso_del_servidor_es_linux_y_aislado` (el servidor es `server.main` en Linux); `tests/e2e/test_08_servidor_linux.py::test_websocket_entrega_el_evento_al_otro_cliente`; `tests/e2e/test_04_compra_concurrente.py::test_dos_clientes_pagan_el_ultimo_item_solo_uno_gana` (dos clientes reales contra el mismo servidor).
+- **Reservas.** Los dos nodos están en una sola máquina física (la red es TCP/IP real a través del reenvío de `localhost` de WSL2); no se probó en dos PC, con firewall ni con red espejo. Un solo servidor y una sola BD: no hay réplicas, balanceo ni tolerancia a fallos del servidor. HTTP sin TLS.
+
+### F-02 Vencidos frente a retiro
+
+- **Qué se hizo.** Un vencido nunca tiene descuento y no se vende; se retira (baja lógica) en el escaneo. `server/domain/riesgo.py` (`esta_vencido`, `evaluar_producto`: `descuento = 0.0 if vencido`), `server/domain/ventas.py::validar_linea` (rechaza vencidos), `server/application/riesgo_service.py::escanear` (llama a `retirar_vencidos`), `RiesgoService.ofertas` (excluye vencidos aunque el escaneo no haya corrido).
+- **Pruebas.** `tests/domain/test_riesgo.py::test_vencido_sin_descuento`, `::test_justo_vencido`, `::test_vencido_y_sobrestock_sin_descuento`; `tests/domain/test_ventas.py::test_vencido`; `tests/application/test_riesgo_inventario.py::test_escaneo_retira_vencidos_y_aplica_descuentos`, `::test_ofertas_excluye_vencidos_aun_sin_escaneo`; `tests/application/test_venta.py::test_vencido_inactivo_y_no_existente`; `tests/api/test_api.py::test_compra_producto_vencido_409`; `tests/e2e/test_08_servidor_linux.py::test_comprar_producto_vencido_es_rechazado`.
+- **Reservas.** Ninguna funcional. El vencimiento es "estrictamente posterior a la fecha y hora": en el instante exacto aún se vende (probado en `test_justo_vencido`). El retiro real ocurre hasta un intervalo de escaneo (60 s por defecto) después del vencimiento, pero la compra ya lo rechaza.
+
+### F-03 Sobrevendición
+
+- **Qué se hizo.** La compra es una sola transacción (`server/application/venta_service.py::comprar`) y el descuento de stock es condicional (`ProductoRepo.descontar_stock_atomico`, `stock >= cantidad`). Además la BD tiene `CHECK stock >= 0` (`ck_producto_stock` en `orm.py`).
+- **Pruebas.** `tests/application/test_venta.py::test_dos_hilos_compran_el_ultimo_item`, `::test_muchos_hilos_nunca_sobrevenden` (12 hilos, stock 5: exactamente 5 compras), `::test_stock_insuficiente_rollback_total`, `::test_rollback_si_falla_descuento_atomico_a_mitad`; `tests/infra/test_db.py::test_descontar_stock_atomico`, `::test_descontar_stock_concurrente_no_sobrevende`, `::test_check_producto`; `tests/e2e/test_04_compra_concurrente.py` (3 pruebas: dos clientes reales, 8 rondas de 2 compradores, 6 compradores sobre stock 3).
+- **Reservas.** Se probó con hasta 12 hilos y 6 clientes sobre SQLite/WAL con un solo worker; no hay pruebas de carga ni de varios procesos servidor.
+
+### F-04 Factura en base de datos
+
+- **Qué se hizo.** Tablas `facturas` y `detalle_factura` (`orm.py`), numeración consecutiva con la tabla `contadores`, IVA sobre el precio con descuento (`server/domain/facturacion.py`). La factura se crea dentro de la misma transacción que el descuento de stock; la API la devuelve en `POST /compras` y `GET /facturas/{numero}`; un comprador solo ve las suyas.
+- **Pruebas.** `tests/infra/test_db.py::test_factura_roundtrip_y_filtros`, `::test_numero_factura_unico`, `::test_numero_consecutivo`, `::test_numero_no_se_consume_con_rollback`, `::test_fk_detalle_con_producto_inexistente_falla`; `tests/application/test_venta.py::test_compra_exitosa_valores_y_eventos`, `::test_rollback_si_falla_la_factura`, `::test_comprador_no_ve_facturas_ajenas`, `::test_factura_pesos_enteros_iva_19_y_total_igual_base_mas_iva`; `tests/domain/test_facturacion.py` (11 pruebas); `tests/e2e/test_06_factura.py::test_factura_iva_19_enteros_pdf_y_consecutivo`.
+- **Reservas.** El PDF se genera en el cliente a partir de los datos del servidor; el servidor no guarda el PDF. Los montos se almacenan como `Float` (se calculan y redondean en pesos enteros, pero no hay tipo decimal en la BD). La tarjeta es simulada y las facturas no tienen validez fiscal. Las facturas migradas de la BD antigua (`FAC-LEG-...`) no tienen usuario (`usuario_id` nulo), IVA 0 y método `historico` (`migrar_legacy.py`, probado en `tests/infra/test_migracion.py`; en esta máquina no existe una BD legacy real, así que solo se probó con una BD de prueba creada por el test).
+
+### F-05 Hash de contraseñas débil
+
+- **Qué se hizo.** argon2id (`server/security/hashing.py`). Los hashes heredados `sha256$<hex>` se aceptan una vez y se reemplazan por argon2id en el primer ingreso correcto (`AuthService.login`). Sin contraseñas fijas en el código (`server/security/bootstrap.py`). Las respuestas no filtran el hash ni distinguen "usuario inexistente" de "contraseña incorrecta".
+- **Pruebas.** `tests/security/test_seguridad.py::test_argon2id_hash_y_verificacion`, `::test_sha256_legacy_valido_pide_rehash`, `::test_login_rehash_sha256`, `::test_login_error_generico`, `::test_sin_contrasenas_fijas_en_codigo`, `::test_bootstrap_genera_credenciales_y_es_idempotente`; `tests/e2e/test_08_servidor_linux.py::test_migracion_hash_sha256_a_argon2id` (en la BD de Linux, `sha256$...` pasa a `$argon2id$v=19$m=65536,t=3,p=4...` solo tras login correcto).
+- **Reservas.** La migración es perezosa: un usuario con hash SHA-256 que nunca vuelve a iniciar sesión conserva ese hash. El tráfico no está cifrado (HTTP sin TLS): la contraseña viaja en claro por la red entre los nodos.
+
+### F-06 Sesiones largas (sin cierre por inactividad)
+
+- **Qué se hizo.** JWT con `jti` + tabla `sesiones` con `ultima_actividad`; cada petición valida firma, expiración absoluta (`sesion_maxima_minutos`), sesión no cerrada y `ahora - ultima_actividad <= inactividad_segundos` (leído de la configuración en cada validación). Solo `/auth/login` y `POST /auth/actividad` renuevan. Cliente: `IdleMonitor` con aviso y cierre local. Valores por defecto 180 s y aviso 30 s, configurables por el administrador (30 a 3600 s).
+- **Pruebas.** Servidor: `tests/security/test_seguridad.py::test_inactividad_179_vive_181_muere`, `::test_borde_exacto_180_vive`, `::test_validar_no_renueva_y_actividad_si`, `::test_actividad_sobre_sesion_caducada_falla`, `::test_cambio_de_config_aplica_a_sesion_abierta`, `::test_token_expirado`; `tests/api/test_api.py::test_inactividad_sin_actividad_expira`, `::test_lectura_no_renueva_y_actividad_si`, `::test_cambio_de_inactividad_por_admin_aplica_a_sesion_abierta`, `::test_ws_detecta_caducidad_por_inactividad_sin_renovar`. Cliente: `tests/client/test_idle_monitor.py` (10 pruebas, p. ej. `test_aviso_a_los_n_menos_30_y_expirada_a_n`, `test_filtro_de_eventos_teclado_raton_rueda`); `tests/client/test_aplicacion.py::test_cierre_por_inactividad_local_vuelve_al_login`, `::test_config_cambiada_actualiza_idle_en_caliente`. E2E: `tests/e2e/test_02_inactividad.py` (`test_a` a `test_h`: aviso a ~20 s y cierre a ~30 s con política 30/10, el refresco automático no renueva, "Seguir conectado" sí renueva, el cambio del administrador llega a sesiones abiertas en ~0,35 s).
+- **Reservas.** Los E2E usan el mínimo permitido (30 s con aviso de 10 s); no se esperó la ventana completa de 180 s (sí se comprobó que las sesiones arrancan con 180/30). La entrada de teclado y ratón en las pruebas se inyecta con `QTest`, no con entrada física del sistema. Al momento de redactar este documento otro agente trabajaba en un cierre intermitente del cliente (`client/`); el estado final de esa corrección no se verificó aquí y debe confirmarse volviendo a ejecutar `tests/client` y `tests/e2e/test_02_inactividad.py`.
+
+### F-07 Capa lógica
+
+- **Qué se hizo.** Separación en `api` (rutas), `application` (casos de uso y transacciones), `domain` (reglas puras) e `infrastructure/db` (ORM y repositorios); `security` para autenticación. Búsqueda de imports: `server/domain`, `server/application` y `shared/` no importan FastAPI, PyQt ni `sqlalchemy` directamente. La autorización por rol se exige en los servicios (`exigir_admin`, `exigir_autenticado`) y no solo en la API.
+- **Pruebas.** Cada capa tiene su carpeta de pruebas y las del dominio no necesitan BD ni red: `tests/domain/` (`test_riesgo.py`, `test_ventas.py`, `test_facturacion.py`, `test_dinero.py`); `tests/application/` (`test_venta.py`, `test_riesgo_inventario.py`, `test_config.py`); `tests/application/test_riesgo_inventario.py::test_solo_admin_muta_inventario`; `tests/application/test_config.py::test_solo_admin_escribe`; `tests/api/test_api.py::test_comprador_no_accede_a_admin`.
+- **Reservas.** `application` depende de las clases concretas de repositorio y de `sesion()` (`server.infrastructure.db`), sin interfaces abstractas (puertos); solo `security` usa un `Protocol` (`Bus`). No existe una prueba automática que haga cumplir las reglas de importación entre capas: la comprobación se hizo por búsqueda en el código.
+
+### F-08 Configuración volátil
+
+- **Qué se hizo.** La configuración vive en la tabla `configuracion` (clave-valor), con valores por defecto sembrados solo si faltan (`server/infrastructure/db/seed.py`) y escritura validada y atómica (`ConfigService.actualizar`: rangos y reglas cruzadas como `aviso_segundos < inactividad_segundos`). Se lee en cada uso, por lo que el cambio aplica sin reiniciar; publica el evento `config_cambiada`. Se eliminó la clave obsoleta `descuento_medio`.
+- **Pruebas.** `tests/application/test_config.py::test_actualizar_persiste_y_publica_evento`, `::test_atomico_si_una_falla_no_se_guarda_ninguna`, `::test_rangos_invalidos`, `::test_aviso_se_valida_contra_valor_resultante`, `::test_fila_huerfana_descuento_medio_se_ignora`; `tests/infra/test_db.py::test_config_defaults_y_seed`, `::test_seed_no_incluye_descuento_medio_y_limpia_fila_huerfana`; `tests/api/test_api.py::test_put_config_valida_rangos`; `tests/e2e/test_02_inactividad.py::test_b_admin_cambia_a_30_10_por_la_ui`.
+- **Reservas.** Ninguna prueba reinicia el servidor y comprueba específicamente que la configuración sobrevive (`tests/e2e/test_07_reinicio.py` verifica productos, usuarios, factura, consecutivo y token). Que persiste se deduce de que `ConfigService` solo lee y escribe en la tabla en cada llamada, no de una prueba de reinicio dedicada.
+
+### F-09 Hilos bloqueantes
+
+- **Qué se hizo.** Cliente: toda llamada de red se ejecuta con `client/infrastructure/workers.py::ejecutar` (QThreadPool, resultados devueltos al hilo gráfico). Revisión de las llamadas `api.*` en `client/presentation`: todas están dentro de funciones que se pasan a `ctx.ejecutar` (incluida `DialogoFormulario.llamar`, `_comunes.py`). `Aplicacion` hace login, health y logout también en workers. Servidor: el escaneo corre en un hilo daemon (`Scheduler`) y la validación de tokens del WebSocket se delega con `run_in_threadpool`.
+- **Pruebas.** `tests/client/test_idle_monitor.py::test_workers_devuelven_al_hilo_gui`; `tests/e2e/test_03_servidor_caido.py::test_servidor_caido_indicador_y_cierre_local_sin_congelar` (con el servidor caído, un temporizador de 50 ms en el hilo gráfico tuvo un hueco máximo de 83 ms en 477 muestras, y el login con servidor caído 190 ms); `tests/client/test_api_client.py::test_cerrar_con_peticion_en_vuelo_no_la_corta_y_rechaza_nuevas`; `tests/application/test_riesgo_inventario.py::test_scheduler_arranca_y_detiene`, `::test_scheduler_sobrevive_a_excepciones`, `::test_scheduler_lee_intervalo_en_cada_ciclo_y_es_daemon`; `tests/api/test_api.py::test_scheduler_arranca_y_se_detiene`.
+- **Reservas.** Ninguna prueba automática recorre todas las llamadas de la interfaz para garantizar que ninguna bloquee; la garantía es la revisión del código más la medición del hueco del hilo gráfico en el escenario del servidor caído.
+
+### F-10 Frontend huérfano
+
+- **Qué se hizo.** Se interpreta como una interfaz sin servidor propio: la UI antigua accedía directamente a la BD y a los módulos del programa único. Ahora todas las vistas llaman a la API mediante `ApiClient` (`client/infrastructure/api_client.py`) y los modelos de `shared/`; no hay imports de `server`, `sqlalchemy`, `database` ni `models` en `client/`. Las cinco vistas del administrador (Dashboard, Inventario, Alertas, Usuarios, Configuración; `MainWindow.VISTAS`) y la ventana del comprador (`BuyerWindow`: catálogo, carrito, pago y factura) están enlazadas desde `Aplicacion` según el rol.
+- **Pruebas.** `tests/e2e/test_08_servidor_linux.py::test_flujo_admin_por_la_ui_recorre_todas_las_vistas` (login, las 5 vistas cargan contra el servidor Linux); `tests/e2e/test_06_factura.py::test_factura_iva_19_enteros_pdf_y_consecutivo` (flujo del comprador hasta el PDF); `tests/client/test_vistas_admin.py` (33 pruebas), `tests/client/test_comprador.py` (34), `tests/client/test_widgets.py` (32), `tests/client/test_aplicacion.py` (16) y `tests/client/test_api_client.py` (13).
+- **Reservas.** `client/presentation/views/ventana_provisional.py` sigue en el código como ventana de respaldo si faltara la ventana final del rol (`Aplicacion._crear_ventana`); con las ventanas finales presentes no se usa y es un candidato a código muerto. La eliminación del código del programa antiguo (`ui/` y los `.py` de la raíz) la realiza otro agente y no se verificó en este documento.
+
+## Notas de verificación
+
+- Los nombres de pruebas se leyeron de `tests/` (búsqueda de `def test_`). El número de pruebas ejecutadas (398 + 32) proviene de `INFORME_PRUEBAS.md`.
+- Hallazgos H-1 (eventos WS al editar), H-2 (JWT en logs) y H-3 (`localhost` lento) del informe de pruebas están corregidos y con prueba: `tests/application/test_riesgo_inventario.py::test_editar_cualquier_campo_visible_publica_stock_actualizado`, `tests/security/test_logfilter.py`, `tests/client/test_api_client.py::test_url_por_defecto_es_ip_literal_y_la_explicita_se_respeta`, y en E2E `test_05_tiempo_real.py::test_editar_precio_notifica_por_ws`, `test_09_hallazgos.py`.

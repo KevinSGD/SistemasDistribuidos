@@ -55,13 +55,13 @@ Colombia
 - Estrategia de marketing
 - Pitch – Video
 - Desarrollo E Implementación
-   - Función: dias_para_vencer
-   - Función: riesgo_por_vencimiento
-   - Función: eliminar_vencidos
-   - Función: escanear_inventario
-   - class Usuario (Base):
-   - class Producto (Base):
-   - Class Descuento (Base)
+   - Arquitectura de dos nodos y capas
+   - Módulo: server/domain/riesgo.py
+   - Módulo: server/application/riesgo_service.py
+   - Módulo: server/application/venta_service.py
+   - Módulo: server/security (sesiones, tokens y hashing)
+   - Cliente: client/ (hilos de red, inactividad y eventos)
+   - Modelo de datos (server/infrastructure/db/orm.py)
 - Solución
 - Proyección o impacto
 - Conclusiones
@@ -207,6 +207,28 @@ SQL Lenguaje utilizado para gestionar bases de datos relacionales.
 
 CRUD Operaciones básicas de Crear, Leer, Actualizar y Eliminar
 registros en una base de datos.
+
+Nodo Equipo o sistema operativo que ejecuta una parte del sistema. El
+proyecto tiene dos: el servidor (Ubuntu sobre WSL2) y el cliente
+(Windows).
+
+API REST Interfaz HTTP con mensajes JSON mediante la cual el cliente pide
+operaciones al servidor (FastAPI).
+
+WebSocket Conexión persistente sobre TCP por la que el servidor envía
+eventos al cliente sin que este los pida.
+
+Token (JWT) Credencial firmada que el servidor entrega al iniciar sesión y que
+el cliente envía en cada petición para identificarse.
+
+Cierre por
+inactividad
+
+Cierre automático de la sesión cuando el usuario no interactúa
+durante un tiempo que el administrador puede configurar.
+
+argon2id Algoritmo de derivación de claves usado para guardar las
+contraseñas de forma que no puedan leerse.
 
 
 ## Equipo De Trabajo
@@ -375,8 +397,9 @@ económicas como medioambientales que refuercen la viabilidad social del proyect
 
 ## Alcance
 
-El alcance del presente proyecto es el diseño y desarrollo de una aplicación de
-escritorio para gestionar automáticamente los inventarios de productos perecederos de
+El alcance del presente proyecto es el diseño y desarrollo de un sistema distribuido
+de dos nodos (un servidor y una aplicación de escritorio cliente) para gestionar
+automáticamente los inventarios de productos perecederos de
 supermercados o pequeños locales el sistema permitirá registrar productos llevar el control
 de las fechas de caducidad llamar automáticamente a los productos caducados o próximos a
 su caducidad, aplicar descuentos dinámicos preparados previamente por el administrador, la
@@ -396,19 +419,33 @@ orienta a generar un prototipo funcional y estable que permita verificar la viab
 operativa de la propuesta sin depender de las tecnologías avanzadas que agravarían la
 complejidad del desarrollo.
 
-El mismo sistema también empleará una base de datos local que contendrá la
-información referente a usuarios información relacionada con productos y sobre inventarios
-por lo que no se consideran arquitecturas distribuidas clústeres dispersos ni sincronismos en
+El sistema se organiza en dos nodos que se ejecutan en sistemas operativos
+distintos y se comunican por red: un servidor FastAPI en Ubuntu (sobre WSL2) y un cliente
+de escritorio PyQt6 en Windows. La comunicación usa HTTP con mensajes JSON para las
+operaciones y un WebSocket para que el servidor avise de los cambios en tiempo real
+(stock, descuentos, productos retirados, cambios de configuración y cierres de sesión).
+El servidor es el único que accede a la base de datos (SQLite), aplica las reglas de
+negocio, calcula los descuentos y las facturas y comprueba los permisos de cada rol; el
+cliente solo muestra información y envía las acciones del usuario. El acceso se controla
+con un token firmado (JWT) y la sesión se cierra automáticamente tras un tiempo de
+inactividad que el administrador puede configurar. Siguen sin considerarse clústeres,
+réplicas, balanceo de carga ni servicios en la nube: hay un único servidor y una única base de
+datos, y la demostración corre en una sola máquina física con los dos sistemas operativos
+conectados por red real (TCP/IP), de modo que la arquitectura es distribuida en dos
+nodos, no un sistema tolerante a fallos. La aplicación contempla dos tipos de usuarios
+principales, el administrador o vendedor responsable de la gestión del inventario, los
+descuentos, los usuarios y la configuración, y el usuario comprador que podrá ver la lista
+de productos en oferta en un instante determinado, comprar y obtener su factura.
 
-
-tiempo real con servidores externos, esto quiere decir que la propia aplicación trabajará de
-modo local, en un entorno controlado y es de esta manera que se pueden simplificar
-muchísimo las tareas de manejo de los datos y que evidentemente el proyecto de la
-aplicación tenga que soportar muchos menos requerimientos del punto de vista técnico,
-además la propia aplicación sólo contendrá como usuarios a dos tipos de usuarios
-principales el administrador o vendedor responsable de la gestión del inventario y de los
-descuentos y el usuario comprador que será el que podrá ver la lista de productos en oferta
-en un instante determinado.
+Nota de cambio de alcance respecto a la versión original: la versión inicial describía
+una aplicación de escritorio única con base de datos local, sin arquitectura distribuida ni
+sincronismo en tiempo real. En la versión final se separó el sistema en servidor y cliente
+(dos nodos), se añadieron el token con cierre de sesión por inactividad configurable, la
+gestión de usuarios, las notificaciones en tiempo real por WebSocket, la factura
+guardada en base de datos con IVA y el almacenamiento de contraseñas con argon2id. Se
+eliminó el nivel de descuento "Medio 15 %", que nunca tuvo efecto. Quedan fuera de alcance, igual que antes, la
+integración con sistemas comerciales reales, los pagos electrónicos reales, la nube y la
+inteligencia artificial avanzada.
 
 Hay que señalar que el proyecto no abarca la integración con sistemas comerciales o
 plataformas empresariales vigentes en un entorno productivo actualmente utilizado por
@@ -499,15 +536,17 @@ planteó la opción de incorporar inteligencia artificial como un medio de mejor
 propuesta, el objetivo de este proyecto es el desarrollo de una solución básica que permita
 la automatización de las condiciones de los productos próximos a caducar.
 
-El sistema está basado en un modelo de arquitectura clásica y sencillo cliente
-servidor cuyo objetivo es enseñar a gestionar el inventario y cómo interactuar los usuarios
-con la aplicación, el servidor central es quien se ocupa de gestionar la información del
-sistema y de manejar las operaciones de los productos y descuentos en cambio el cliente
-representa la aplicación de escritorio que usan los usuarios, a diferencia de sistemas
-empresariales complejos que emplean una arquitectura distribuida y varios nodos de
-procesamiento este proyecto no contempla dicha idea ya que es un prototipo académico
-
-
+El sistema está basado en una arquitectura distribuida de dos nodos con el modelo
+cliente servidor, cuyo objetivo es gestionar el inventario y permitir que los usuarios
+interactúen con la aplicación desde otro equipo o sistema operativo. El servidor central
+(FastAPI, en Ubuntu sobre WSL2) es quien se ocupa de gestionar la información del
+sistema y de manejar las operaciones de los productos, descuentos, ventas, facturas y
+usuarios; el cliente (PyQt6, en Windows) representa la aplicación de escritorio que usan
+los usuarios. Ambos nodos se comunican por HTTP (REST con JSON) y por un WebSocket
+para los eventos en tiempo real, y cada usuario se identifica con un token JWT. A diferencia
+de sistemas empresariales complejos que emplean varios nodos de procesamiento,
+réplicas y balanceo de carga, este proyecto tiene un único servidor y una única base de
+datos: es un prototipo académico
 orientado a comprobar si realmente la arquitectura cumple con los requerimientos
 funcionales del sistema, para Baryannis (2019), sigue siendo una de las arquitecturas más
 utilizadas en las aplicaciones de gestión en virtud de su simplicidad, estabilidad y facilidad
@@ -526,26 +565,31 @@ de trabajo manual, según Dutta (2020), la automatización de los procesos de in
 gestión comercial puede contribuir a un incremento significativo de la eficiencia operativa
 y a la reducción de las pérdidas debidas a los errores humanos.
 
-Desde el punto de vista de la infraestructura el proyecto se apoyará en la existencia
-de una base de datos local para almacenar la información lo que conlleva que toda la
-información a la que hace referencia el proyecto, productos, usuarios y descuentos haya de
-estar almacenada sintiéndose aislada dentro de un único entorno interno que no precisará de
-servidores remotos ni sistemas distribuidos para ello, la decisión de recurrir a una base de
-datos local está justificada por el alcance académico y funcional del proyecto ya que es
+Desde el punto de vista de la infraestructura el proyecto se apoya en una base de
+datos SQLite que administra únicamente el servidor, de modo que toda la información a
+la que hace referencia el proyecto (productos, usuarios, descuentos, ventas, facturas,
+sesiones y configuración) está almacenada en el nodo servidor y los clientes no acceden a
+ella directamente, solo a través de la API. La decisión de mantener SQLite está
+justificada por el alcance académico y funcional del proyecto ya que es
 posible simplificar la administración del sistema y reducir los costes de implantación,
 
 
 asimismo este tipo de estructura contribuye a facilitar el mantenimiento y la prueba del
-prototipo en entornos controlados si bien se renuncia a la utilización de tecnologías
-distribuidas y de servicios complejos en la nube, a pesar de esto el sistema mantiene una
-organización de los datos que permite para una futura escalabilidad si así lo requiere.
+prototipo en entornos controlados. Se renuncia a la replicación, al balanceo de carga, al
+cifrado TLS de las comunicaciones (el tráfico es HTTP, pensado para una red de confianza)
+y a los servicios en la nube. A pesar de esto el sistema mantiene una
+organización de los datos y una separación en capas que permiten una futura
+escalabilidad si así lo requiere, por ejemplo cambiando SQLite por un motor de base de
+datos de servidor y añadiendo HTTPS.
 
 La seguridad de la información y la tolerancia a fallos constituyen asimismo un
 aspecto importante a tomar en cuenta por parte del diseño de este sistema, para ello se
 establece la necesidad de hacer copia de los datos contenidos en el sistema de forma que se
 pueda recuperar dicha información en caso de fallos técnicos o de pérdida de información,
-el sistema también contará con un soporte muy básico de validación de acceso que permita
-que la información guardada en los sistemas sólo sea objeto de modificación por parte de
+el sistema también cuenta con validación de acceso mediante usuario y contraseña
+(guardada con argon2id), un token firmado con cierre automático de la sesión por
+inactividad y comprobación de permisos por rol en el servidor, de modo que la información
+guardada en los sistemas sólo sea objeto de modificación por parte de
 usuarios autorizados dentro del inventario, Zhang (2022) concretó que incluso los sistemas
 de pequeña escala deberían considerar las medidas de protección y recuperación de la
 información como parte del sistema para asegurar la continuidad del proceso de forma que
@@ -577,10 +621,10 @@ prácticas de compra más accesibles y sostenibles.
 Por su parte la creación de este sistema se plantea como una propuesta tecnológica
 simple, pero de utilidad práctica que intenta solucionar una problemática real en el ámbito
 del sector comercial, la unión de la automatización de descuentos la gestión del inventario y
-la gestión local de los datos permitirá la creación de una herramienta simple, eficaz y
+la gestión centralizada de los datos en un servidor permitirá la creación de una herramienta simple, eficaz y
 escalable destinada a comercios pequeños o a pruebas piloto, aunque el desarrollo del
-proyecto no ha incorporado arquitecturas distribuidas complejas ni tecnologías de
-inteligencia artificial potentes en su versión actual sí sirve como una base para posteriores
+proyecto no ha incorporado réplicas, balanceo de carga ni tecnologías de
+inteligencia artificial potentes en su versión actual y se limita a una arquitectura distribuida de dos nodos, sí sirve como una base para posteriores
 mejoras y desarrollos tecnológicos, de esta manera se conjuga el sistema como una
 alternativa factible para mejorar la gestión de los productos perecederos y como un medio
 para contribuir a la disminución de los residuos alimentarios apoyándose en las
@@ -611,10 +655,13 @@ pueden influir en el rendimiento del sistema.
 ID Requerimiento RF- 01
 Nombre Autenticación de usuarios
 Descripción El sistema debe permitir el ingreso mediante usuario y contraseña,
-las credenciales deben verificarse contra la base de datos, solo los
-usuarios con estado activo podrán iniciar sesión además el sistema
-debe validar campos vacíos y mostrar mensajes de error ante
-credenciales incorrectas.
+las credenciales las verifica el servidor contra la base de datos y, si
+son correctas, este entrega un token (JWT) que el cliente envía en
+cada petición. Solo los usuarios con estado activo podrán iniciar
+sesión, el sistema debe validar campos vacíos y mostrar el mismo
+mensaje de error ante usuario inexistente, inactivo o contraseña
+incorrecta (sin revelar cuál fue la causa). Tras 5 intentos fallidos
+de un mismo usuario se bloquea el ingreso durante 60 segundos.
 Prioridad Alta
 ```
 ```
@@ -623,7 +670,11 @@ Nombre Control de acceso por roles
 Descripción El sistema maneja dos roles: administrador y comprador. Tras
 autenticarse, cada rol accede a una interfaz diferente, el
 administrador tiene acceso completo al sistema, el comprador solo
-puede visualizar los productos que tienen descuento activo.
+puede visualizar los productos que tienen descuento activo, comprar
+y consultar sus propias facturas. El permiso de cada operación se
+comprueba en el servidor, no solo en la interfaz: una petición de un
+comprador a una operación de administrador es rechazada con el
+código 403.
 Prioridad Alta
 ```
 
@@ -665,16 +716,27 @@ automática en el nombre del archivo.
 
 - Crítico: Vencido o ≤ 3 días.
 - Alto: ≤ 7 días.
-- Medio: Sobrestock (≥ 90% máx) o Stock bajo (≤ 10 und).
+- Medio: Sobrestock (≥ 90% máx) o Stock bajo (≤ 10 und, con stock mayor
+  que cero; es solo una alerta y no genera descuento).
 - Normal: Sin condiciones.
+Un producto vencido se clasifica como Crítico pero no se vende ni
+recibe descuento: se retira del inventario (RF-22). El cálculo lo
+realiza el servidor (server/domain/riesgo.py) con umbrales tomados de
+la configuración.
 **Prioridad** Alta
 
 
 **ID Requerimiento** RF- 09
 **Nombre** Aplicación automática de descuentos
 **Descripción** Generación de descuentos según riesgo: Crítico (50%), Alto
-(30%), Medio (15%), Sobrestock (10%). Recálculo automático
-cada 60 segundos.
+(30%) y Sobrestock (10%). El stock bajo solo genera una alerta, sin
+descuento. El nivel "Medio 15%" de la versión original se eliminó
+porque nunca tuvo efecto. Si un producto cumple varias condiciones
+se aplica el mayor descuento. Los porcentajes son configurables
+(RF-13). El servidor recalcula los descuentos automáticamente
+cada 60 segundos (intervalo configurable) y los guarda en la base
+de datos; el precio que ve el comprador y el que se cobra
+proceden de la misma evaluación.
 **Prioridad** Alta
 
 **ID Requerimiento** RF- 10
@@ -689,33 +751,35 @@ que requieren atención inmediata (motivo, descuento, precios).
 severidad.
 **Prioridad** Media
 
-
-**ID Requerimiento** RF- 11
-**Nombre** Vista de alertas
-**Descripción** Interfaz dedicada para productos problemáticos agrupados por
-severidad.
-**Prioridad** Media
-
 **ID Requerimiento** RF- 12
 **Nombre** Visualización de descuentos (Comprador)
 **Descripción** Acceso exclusivo a productos con descuento activo. Información:
 nombre, categoría, stock, precio original, precio final y %.
-Actualización cada 60s.
+La lista se actualiza al instante cuando el servidor avisa de un
+cambio por WebSocket (RF-25) y, si la conexión en tiempo real
+se pierde, se consulta cada 60 s.
 **Prioridad** Alta
 
 **ID Requerimiento** RF- 13
 **Nombre** Configuración del sistema
-**Descripción** Ajuste de parámetros: Datos de empresa (NIT, nombre), moneda,
-umbrales de alerta, porcentajes de descuento e intervalos de
-escaneo.
+**Descripción** Ajuste de parámetros por el administrador: datos de empresa
+(NIT, nombre, dirección, teléfono), moneda, IVA, decimales de la
+moneda, umbrales de alerta, porcentajes de descuento (crítico,
+alto y sobrestock), intervalo de escaneo y parámetros de sesión:
+inactividad_segundos (tiempo sin actividad antes de cerrar la
+sesión) y aviso_segundos (segundos de aviso previo). Los valores
+se validan por rango en el servidor y se guardan en la tabla
+configuracion de la base de datos, por lo que persisten al
+reiniciar el servidor.
 **Prioridad** Media
 
 
 **ID Requerimiento** RF- 14
 **Nombre** Cierre de sesión
 **Descripción** Cualquier usuario puede cerrar sesión desde su interfaz, el sistema
-regresa a la pantalla de login para permitir el ingreso con otra
-cuenta.
+revoca la sesión en el servidor (el token deja de ser válido) y regresa a la
+pantalla de login para permitir el ingreso con otra cuenta. La
+sesión también se cierra automáticamente por inactividad (RF-24).
 **Prioridad** Media
 
 **ID Requerimiento** RF- 15
@@ -742,29 +806,43 @@ confirmación previa
 **Nombre** Resumen del carrito en tiempo real
 **Descripción** El panel del carrito muestra en todo momento el subtotal sin
 descuento, el ahorro total generado por los descuentos y el total a
-pagare stos valores se recalculan automáticamente cada vez que el
-comprador modifica cantidades o elimina productos.
+pagar antes de IVA (el IVA se suma al confirmar el pago, si está
+configurado). Estos valores se recalculan automáticamente cada vez que el
+comprador modifica cantidades o elimina productos. Los montos son
+pesos enteros.
 **Prioridad** Alta
 
 
 **ID Requerimiento** RF- 18
-**Nombre** Proceso de pago en efectivo
+**Nombre** Proceso de pago (datos del cliente y método de pago)
 **Descripción** Al iniciar el proceso de pago, el sistema muestra un diálogo con la
-tabla de productos seleccionados, los totales y una sección de
-pago. El comprador ingresa el monto recibido en efectivo y el
-sistema calcula el cambio en tiempo real. El botón de confirmar
-permanece deshabilitado mientras el monto ingresado sea menor al
-total a pagar. Si el monto es insuficiente, se muestra el valor
-exacto que falta.
+tabla de productos seleccionados, los totales, los datos del
+cliente (nombre y documento, obligatorios) y una sección de
+pago. El método de pago puede ser efectivo o tarjeta simulada (no
+se piden ni se guardan números de tarjeta). En efectivo, el comprador
+ingresa el monto recibido y el sistema calcula el cambio en tiempo
+real. El botón de confirmar permanece deshabilitado mientras el
+monto ingresado sea menor al total a pagar. Si el monto es
+insuficiente, se muestra el valor exacto que falta (y el servidor
+rechaza la compra con el código EFECTIVO_INSUFICIENTE). El IVA se calcula sobre el
+precio ya con descuento: total = precio con descuento + IVA. Todos los
+montos son pesos enteros, con redondeo de la mitad hacia arriba.
 **Prioridad** Alta
 
 **ID Requerimiento** RF- 19
 **Nombre** Registro de ventas
-**Descripción** Al confirmar el pago, el sistema registra cada producto comprado
-como una venta en la base de datos, almacenando la cantidad,
-precio unitario, precio final y el porcentaje de descuento aplicado.
+**Descripción** Al confirmar el pago, el servidor registra la compra como una
+factura (tabla facturas, con número consecutivo FAC-nnnnnn, cliente,
+método de pago, subtotal, ahorro, IVA, total, efectivo y cambio) y una línea
+de detalle por producto (tabla detalle_factura) con la cantidad,
+precio unitario, porcentaje de descuento, precio final y subtotal.
 Simultáneamente, descuenta del stock de cada producto la
-cantidad comprada.
+cantidad comprada. Todo ocurre en una sola transacción y con descuento
+de stock condicionado (stock mayor o igual a la cantidad): si algún
+producto no tiene stock suficiente, está vencido o inactivo, la compra
+completa se revierte y no se consume número de factura. Dos
+compradores que pidan la última unidad a la vez nunca provocan
+sobreventa: uno compra y el otro recibe el error STOCK_INSUFICIENTE.
 **Prioridad** Alta
 
 
@@ -773,17 +851,21 @@ cantidad comprada.
 **Descripción** Después de confirmar el pago, el sistema muestra la factura
 completa dentro de la aplicación sin cerrar ninguna ventana., la
 factura incluye: número único de factura, fecha y hora, datos del
-negocio, información del cliente, tabla de productos con precios y
-descuentos, resumen de totales con ahorro destacado en verde, y la
-sección de pago con el efectivo recibido y el cambio entregado.
+negocio, información del cliente (nombre y documento), tabla de productos con precios y
+descuentos, resumen de totales con ahorro destacado en verde, el IVA
+(calculado sobre el precio con descuento), el método de pago y, en
+efectivo, el efectivo recibido y el cambio entregado. Los datos de la
+factura los entrega el servidor (la misma factura guardada en la base
+de datos) y el cliente solo los muestra. Los montos son pesos enteros.
 **Prioridad** Media
 
 **ID Requerimiento** RF- 21
 **Nombre** Generación y apertura del PDF de factura
 **Descripción** La factura se guarda como PDF únicamente cuando el comprador
-pulsa el botón "Guardar / Imprimir PDF", el archivo se genera en
-la carpeta de reportes del sistema con el número de factura como
-nombre una vez guardado, el sistema abre el PDF
+pulsa el botón "Guardar / Imprimir PDF", el archivo se genera en el
+equipo cliente (con ReportLab, a partir de los datos de la factura que
+entrega el servidor) en la carpeta de reportes del usuario con el
+número de factura como nombre; una vez guardado, el sistema abre el PDF
 automáticamente con el visor predeterminado del sistema
 operativo.
 **Prioridad** Media
@@ -791,27 +873,74 @@ operativo.
 
 **ID Requerimiento** RF- 22
 **Nombre** Eliminación automática de productos vencidos
-**Descripción** El sistema verifica en cada escaneo automático (cada 60 segundos)
-si existen productos cuya fecha de vencimiento ya expiró. Los
-productos vencidos son desactivados automáticamente del
-inventario sin necesidad de intervención manual, el administrador
+**Descripción** El servidor verifica en cada escaneo automático (cada 60 segundos,
+intervalo configurable) si existen productos cuya fecha y hora de vencimiento ya
+expiró. Los productos vencidos son desactivados automáticamente del
+inventario sin necesidad de intervención manual (baja lógica) y no se
+pueden vender mientras tanto: la compra de un producto vencido se rechaza
+aunque el escaneo aún no lo haya retirado. El administrador
 recibe una notificación con el listado exacto de productos retirados
-y la tabla de inventario se actualiza de inmediato para reflejar los
-cambios.
+(evento productos_retirados por WebSocket) y las vistas se actualizan de
+inmediato para reflejar los cambios; los demás usuarios ven que el
+producto desaparece del catálogo.
 **Prioridad** Alta
 
+
+**ID Requerimiento** RF- 23
+**Nombre** Gestión de usuarios (nuevo)
+**Descripción** El administrador puede listar, crear y modificar usuarios desde la
+vista Usuarios: nombre, usuario, rol (administrador o comprador), estado
+activo/inactivo y contraseña (mínimo 8 caracteres, guardada con
+argon2id; nunca se devuelve el hash). No se permiten nombres de usuario
+duplicados. Desactivar un usuario, o cambiar su contraseña o su rol, cierra
+de inmediato sus sesiones abiertas. Un administrador no puede desactivarse
+ni cambiar su propio rol, para no quedarse sin acceso. Las credenciales
+iniciales (admin y comprador) se generan en el primer arranque y no están
+escritas en el código.
+**Prioridad** Alta
+
+**ID Requerimiento** RF- 24
+**Nombre** Cierre de sesión por inactividad configurable (nuevo)
+**Descripción** La sesión de cualquier usuario se cierra automáticamente tras un
+tiempo sin actividad. Por defecto son 180 segundos con un aviso 30 segundos antes
+del cierre, con cuenta regresiva y botón "Seguir conectado"; el administrador puede cambiar
+ambos valores en Configuración (inactividad de 30 a 3600 s, aviso menor que la
+inactividad) y el cambio se aplica también a las sesiones ya abiertas. Solo cuenta
+como actividad el uso real del teclado y el ratón (o cambiar de vista): el refresco
+automático y los eventos del WebSocket no la renuevan. El cliente cierra
+la sesión con su propio temporizador y el servidor la caduca por su lado, de modo
+que un token inactivo deja de ser válido aunque el cliente no lo informe. Además, cada
+token tiene una vigencia máxima absoluta (por defecto 480 minutos).
+**Prioridad** Alta
+
+**ID Requerimiento** RF- 25
+**Nombre** Notificaciones en tiempo real por WebSocket con respaldo de sondeo (nuevo)
+**Descripción** El servidor notifica a los clientes conectados los eventos
+stock_actualizado, descuento_cambiado, productos_retirados (solo
+administrador), config_cambiada y sesion_cerrada, de modo que las vistas
+(catálogo, inventario, alertas, dashboard) se refrescan sin que el usuario haga
+nada. Si la conexión se pierde, el cliente reconecta con espera creciente y mientras tanto
+consulta los datos cada 60 segundos; al reconectar hace una consulta de
+resincronización. La barra de estado indica si el servidor está en línea, el sistema
+operativo del servidor y si hay eventos en vivo.
+**Prioridad** Alta
 
 ### Requerimientos No Funcionales Del Sistema
 
 ```
 ID Requerimiento RNF- 01
 Nombre Seguridad de credenciales
-Descripción Las contraseñas de todos los usuarios del sistema deben
-almacenarse en la base de datos, en ningún momento se guarda ni
-se transmite la contraseña en texto plano, el sistema no permite el
-acceso a ninguna vista sin haber completado el proceso de
-autenticación, y cada rol solo puede acceder a las funcionalidades
-que le corresponden.
+Descripción Las contraseñas de todos los usuarios del sistema se almacenan
+en la base de datos del servidor solo como hash argon2id; en ningún
+momento se guarda la contraseña en texto plano ni se devuelve en
+las respuestas. Los hashes SHA-256 de la versión anterior se
+reemplazan por argon2id de forma transparente en el primer ingreso
+correcto. El sistema no permite el acceso a ninguna operación sin un token
+válido (firmado, no expirado y con sesión vigente), y la autorización
+de cada rol se comprueba en el servidor. Las respuestas de error no
+revelan si el usuario existe. Nota: la contraseña viaja por HTTP sin
+TLS entre los nodos, por lo que el sistema está pensado para una red
+de confianza (en producción iría detrás de HTTPS).
 Prioridad Alta
 ```
 
@@ -819,19 +948,25 @@ Prioridad Alta
 **Nombre** Rendimiento del escaneo automático
 **Descripción** El motor de riesgo debe completar el análisis completo del
 inventario y la detección de productos vencidos en un tiempo no
-perceptible para el usuario, el ciclo de escaneo automático se
-ejecuta cada 60 segundos en segundo plano sin interrumpir ni
-bloquear la interfaz gráfica durante su ejecución.
+perceptible para el usuario. El ciclo de escaneo automático se
+ejecuta en el servidor cada 60 segundos (configurable) en un hilo de
+segundo plano, de modo que no depende de que haya clientes abiertos. En el cliente,
+todas las llamadas a la red se hacen en hilos de trabajo (QThreadPool) y los
+resultados vuelven al hilo gráfico, así que la interfaz no se bloquea
+ni siquiera cuando el servidor está caído (prueba E2E: el mayor hueco del
+hilo gráfico fue de 83 ms).
 **Prioridad** Alta
 **ID Requerimiento** RNF- 03
 **Nombre** Persistencia y consistencia de los datos
 **Descripción** Toda la información del sistema, incluyendo productos, usuarios,
-ventas y descuentos, se almacena en una base de datos SQLite
-local que se inicializa automáticamente al arrancar la aplicación,
-las operaciones de escritura que involucren múltiples registros,
+facturas con su detalle, descuentos, sesiones y configuración, se almacena en una base
+de datos SQLite que administra únicamente el servidor y que se inicializa
+automáticamente al arrancar (modo WAL, claves foráneas y restricciones CHECK
+activas). Las operaciones de escritura que involucren múltiples registros,
 como el registro de una compra con descuento de stock, se
 ejecutan dentro de una transacción, garantizando que ante
-cualquier error ningún cambio parcial quede guardado.
+cualquier error ningún cambio parcial quede guardado. Los datos
+(incluida la configuración) sobreviven al reinicio del servidor.
 **Prioridad** Alta
 
 
@@ -848,13 +983,47 @@ deben deshabilitarse visualmente para evitar acciones inválidas.
 
 **ID Requerimiento** RNF- 05
 **Nombre** Portabilidad del sistema
-**Descripción** La aplicación debe funcionar en sistemas operativos Windows,
-Linux y macOS sin requerir modificaciones en el código, ;as rutas
+**Descripción** Cada nodo debe poder ejecutarse en sistemas operativos
+distintos sin modificar el código. La portabilidad se demostró con dos
+sistemas operativos a la vez: el servidor en Ubuntu 26.04 (WSL2) y el cliente en
+Windows 11, comunicados por HTTP y WebSocket (`GET /health` devuelve el sistema
+del servidor, "Linux"). Las rutas
 de almacenamiento de la base de datos, los reportes y los archivos
 de log se determinan automáticamente en tiempo de ejecución
-según el sistema operativo detectado, utilizando los directorios
-estándar de cada plataforma.
+(variables de entorno o los directorios estándar de cada plataforma, con
+platformdirs). Solo se probó la combinación Ubuntu (servidor) y Windows
+(cliente); no se verificaron el servidor en Windows ni el cliente en Linux o macOS.
 **Prioridad** Alta
+
+**ID Requerimiento** RNF- 06
+**Nombre** Arquitectura distribuida y en capas (nuevo)
+**Descripción** El sistema se compone de dos nodos independientes que solo se
+comunican por red: el servidor (Ubuntu/WSL2) es el único dueño de la base
+de datos, de las reglas de negocio y de la autorización; el cliente (Windows)
+no importa código del servidor ni abre la base de datos y accede únicamente a
+través de la API REST y el WebSocket, cuyo contrato único son los modelos
+Pydantic de shared/. Cada nodo instala solo sus dependencias
+(requirements-server.txt y requirements-client.txt). El servidor se divide en
+capas: api (rutas FastAPI y WebSocket), application (casos de uso y
+transacciones), domain (reglas puras sin frameworks), infrastructure (SQLAlchemy y
+repositorios) y security (argon2id, JWT y sesiones). Limitaciones asumidas: un
+solo servidor, un solo proceso (el limitador de intentos y el bus de eventos viven
+en memoria), sin réplicas, sin balanceo y sin TLS.
+**Prioridad** Alta
+
+**ID Requerimiento** RNF- 07
+**Nombre** Observabilidad y registros sin datos sensibles (nuevo)
+**Descripción** El servidor y el cliente escriben registros (logs) con fecha,
+nivel y módulo; el servidor los guarda en un archivo rotativo (2 MB, 3
+copias) además de la consola. Los registros no deben contener credenciales:
+un filtro reemplaza `token=<JWT>` por `token=***` (el WebSocket se
+autentica con el token en la URL y uvicorn la registraría completa), y no se
+registran contraseñas. Los errores no controlados devuelven un mensaje
+genérico (ERROR_INTERNO) sin detalles internos. Excepción: las credenciales
+iniciales generadas en el primer arranque se muestran una sola vez y se guardan
+en un archivo de acceso restringido. El servicio expone `GET /health` (estado,
+versión y sistema operativo) para comprobar que está en línea.
+**Prioridad** Media
 
 
 ## Interfaz Gráfica, Maquetación
@@ -1394,57 +1563,99 @@ el comercio y el cliente final.
 
 ## Desarrollo E Implementación
 
-### Función: dias_para_vencer
+En la versión original esta sección describía funciones de un único programa
+(dias_para_vencer, riesgo_por_vencimiento, eliminar_vencidos, escanear_inventario) y
+las clases Usuario, Producto y Descuento. Con la arquitectura distribuida esa lógica se
+reparte en módulos del servidor, y el cliente ya no contiene reglas de negocio.
 
-Calcula cuántos días faltan para que un producto expire, si el resultado es negativo
-el producto ya está vencido si no tiene fecha de vencimiento retorna None y ese producto
-no entra en la evaluación de vencimiento.
+### Arquitectura de dos nodos y capas
 
-### Función: riesgo_por_vencimiento
+El servidor (carpeta server/) se ejecuta con `python -m server.main` (FastAPI y uvicorn, un
+solo proceso) y se organiza en: api/ (rutas REST y el WebSocket), application/ (servicios y
+casos de uso: InventarioService, VentaService, RiesgoService, ConfigService, UsuarioService
+y el EventBus), domain/ (entidades y reglas puras, sin frameworks), infrastructure/db/ (modelos
+SQLAlchemy, repositorios, migración desde la base antigua y datos iniciales) y security/ (argon2id,
+JWT y sesiones). El cliente (carpeta client/) se ejecuta con `python -m client.main` (PyQt6) y
+se organiza en presentation/ (vistas y widgets), application/ (controlador de sesión) e
+infrastructure/ (api_client con httpx, event_client con QtWebSockets, idle_monitor y
+workers). La carpeta shared/ contiene los modelos Pydantic del contrato entre ambos nodos y
+el redondeo monetario, que usan los dos para que la vista previa del cliente coincida con la factura
+del servidor.
 
+### Módulo: server/domain/riesgo.py
 
-Traduce los días restantes en un nivel de riesgo concreto y asigna el porcentaje de
-descuento correspondiente según los umbrales configurados en CONFIG
+Contiene las funciones puras de riesgo, sin base de datos ni reloj global (reciben la
+fecha actual y la política como parámetros). dias_para_vencer calcula la diferencia en días de calendario
+entre la fecha de vencimiento y hoy (None si el producto no tiene fecha). esta_vencido es
+verdadero solo cuando la hora actual supera estrictamente la fecha y hora de vencimiento.
+evaluar_producto combina el riesgo por vencimiento (Crítico si está vencido o a ≤ 3 días,
+Alto a ≤ 7 días) y el riesgo por stock (sobrestock con descuento, stock bajo solo como
+alerta) y devuelve el nivel, el motivo, el porcentaje de descuento y el precio final. Un
+producto vencido no recibe descuento porque no se vende: se retira. Los umbrales y
+porcentajes vienen de un objeto PoliticaRiesgo construido desde la configuración.
 
-### Función: eliminar_vencidos
+### Módulo: server/application/riesgo_service.py
 
-Busca todos los productos activos cuya fecha de vencimiento ya pasó y los marca
-como inactivos (soft-delete) retorna los nombres para que la interfaz pueda notificar al
-administrador qué productos fueron retirados.
+RiesgoService.escanear reemplaza a las funciones eliminar_vencidos y escanear_inventario de la versión
+original. En una sola transacción retira (baja lógica) los productos vencidos, desactiva
+los descuentos huérfanos y sincroniza los descuentos activos con la evaluación vigente
+(solo hay un descuento activo por producto); después de confirmar publica los eventos
+productos_retirados y descuento_cambiado. La clase Scheduler lo ejecuta en un hilo daemon
+cada intervalo_escaneo_segundos (60 por defecto, releído en cada ciclo) y sobrevive a las
+excepciones. El mismo servicio entrega el resumen del dashboard, las alertas por severidad
+y las ofertas del comprador (activos, no vencidos, con stock y con descuento).
 
+### Módulo: server/application/venta_service.py
 
-### Función: escanear_inventario
+VentaService.comprar valida cada línea con el dominio (cantidad, producto activo, no vencido, stock),
+calcula precios con la misma evaluación de riesgo, suma el IVA sobre el precio con descuento y, dentro de una
+única transacción, descuenta el stock con una condición atómica (stock mayor o igual a la cantidad) y
+crea la factura con su detalle. Si algo falla se revierte todo. Después de confirmar publica
+stock_actualizado. Los cálculos de totales están en server/domain/facturacion.py y
+server/domain/ventas.py.
 
-Primero elimina los vencidos luego evalúa el resto y agrupa los resultados por nivel
-de riesgo, además actualiza el campo nivel_riesgo de cada producto en la base de datos para
-que la tabla de inventario lo refleje correctamente.
+### Módulo: server/security (sesiones, tokens y hashing)
 
+hashing.py guarda las contraseñas con argon2id y verifica el formato antiguo sha256$ para
+re-hashearlo en el primer ingreso. tokens.py emite y valida el JWT (HS256) con los datos
+sub, rol, jti y exp; el secreto viene de una variable de entorno o de un archivo generado en el
+primer arranque. sesiones.py (AuthService) crea una fila en la tabla sesiones por cada login y
+en cada petición valida el token, que la sesión no esté cerrada y que el tiempo desde la última
+actividad no supere inactividad_segundos (valor leído de la configuración en cada validación, por lo que
+un cambio del administrador aplica a las sesiones abiertas). Solo el login y
+POST /auth/actividad renuevan la actividad. Incluye el limitador de 5 intentos fallidos por
+usuario con bloqueo de 60 s (en memoria).
 
-### class Usuario (Base):
+### Cliente: client/ (hilos de red, inactividad y eventos)
 
-Almacena los usuarios del sistema, el campo rol determina a qué ventana accede
-cada usuario tras el login, los dos métodos de contraseña garantizan que nunca se compare
-texto plano con texto plano.
+client/infrastructure/workers.py ejecuta toda llamada de red en un hilo del QThreadPool y
+devuelve el resultado al hilo gráfico. idle_monitor.py cuenta como actividad solo el teclado, los
+clics, la rueda, los movimientos amplios del ratón y el cambio de vista; muestra el aviso, expira
+la sesión con su propio temporizador y reporta la actividad al servidor con un máximo de una
+vez cada 10 s. event_client.py mantiene el WebSocket, reconecta con espera creciente y
+emite un sondeo de respaldo cada 60 s mientras no hay conexión. client/application/sesion.py
+(clase Aplicacion) coordina el login, la ventana según el rol y todos los tipos de cierre
+de sesión.
 
+### Modelo de datos (server/infrastructure/db/orm.py)
 
-### class Producto (Base):
-
-Es la tabla central del sistema, el campo activo implementa el soft-delete nunca se
-borra un producto físicamente solo se desactiva las relaciones con Venta y Descuento
-permiten navegar entre tablas sin escribir JOINs manuales.
-
-### Class Descuento (Base)
-
-
-Registra el historial de descuentos aplicados antes de crear uno nuevo el motor
-desactiva los anteriores del mismo producto para que solo exista un descuento activo por
-producto en cada momento.
+La base SQLite tiene ocho tablas. usuarios guarda nombre, usuario único, password_hash
+(argon2id), rol y activo. productos es la tabla central: el campo activo implementa la baja
+lógica (nunca se borra un producto físicamente) y tiene restricciones CHECK (precio, stock y
+stock máximo no negativos). descuentos registra el historial de descuentos con el porcentaje, el motivo
+y si está activo; el servicio de riesgo desactiva el anterior antes de crear uno nuevo, de modo
+que solo hay un descuento activo por producto. facturas y detalle_factura guardan la compra
+(cabecera con cliente, método de pago, subtotal, ahorro, IVA, total, efectivo y cambio; y una
+línea por producto con una copia del nombre, el precio, el descuento y el subtotal). sesiones guarda
+el identificador del token (jti), la última actividad y el motivo del cierre. configuracion guarda
+los parámetros como pares clave-valor y contadores guarda el consecutivo de facturas. Las claves
+foráneas y las restricciones CHECK están activas en cada conexión.
 
 
 ## Solución
 
 La solución propuesta se basa en una herramienta con diseño de aplicación de
-escritorio que se encarga de gestionar la problemática de forma automatizada con el
+escritorio (cliente) conectada a un servidor que se encarga de gestionar la problemática de forma automatizada con el
 inventario de productos que son perecederos el sistema está orientado a registrar los
 productos reconocer los que están próximos a la fecha de caducidad para aplicar un
 descuento de forma automática en relación con unos parámetros de validación y por otro

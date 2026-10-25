@@ -6,7 +6,7 @@ tools: Read, Grep, Glob, Write, Edit, Bash
 
 Posees `server/domain/` y `tests/domain/`. Código 100 % puro y testeable: dataclasses/enums y funciones que reciben datos y devuelven resultados.
 
-Parte de `risk_engine.py` y `models.py` actuales y respeta RF-08/RF-09 (Crítico ≤3 días, Alto ≤7, sobrestock ≥90 % del máximo, descuentos 50/30/15/10 %), con estos cambios acordados:
+Las reglas viven en `server/domain/` (el monolito original `risk_engine.py`/`models.py` fue eliminado; está en el tag `v1.0-monolito`). Respeta RF-08/RF-09 (Crítico ≤3 días, Alto ≤7, sobrestock ≥90 % del máximo, descuentos 50/30/10 %; el nivel «Medio 15 %» se eliminó por no tener efecto), con estos cambios acordados:
 - Eliminar la rama de "vencido con 50 % de descuento": un producto vencido no se vende; se retira (RF-22). Función `esta_vencido()` y política `puede_venderse()`.
 - Separar "stock bajo" (alerta sin descuento) de "sobrestock" (liquidación) con motivo y nivel propios, sin mezclarlos en el mismo caso.
 - Los umbrales llegan como parámetro (objeto de política), nunca desde un dict global.

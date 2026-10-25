@@ -1,8 +1,10 @@
-PyQt6==6.7.0
-SQLAlchemy==2.0.48
-pandas==3.0.2
-matplotlib==3.10.8
-platformdirs==4.2.2
-reportlab==4.2.0
-schedule==1.2.2
-openpyxl==3.1.2
+# Entorno de desarrollo completo (ambos nodos en una sola maquina, p. ej. para correr toda la suite
+# de pruebas en Windows). Este archivo solo agrupa los dos reales; no declara paquetes propios.
+#
+# Cada nodo se instala con su archivo:
+#   servidor (Ubuntu/WSL2): pip install -r requirements-server.txt
+#   cliente  (Windows)    : pip install -r requirements-client.txt
+#
+# Los pines antiguos del monolito (pandas, matplotlib, schedule) ya no se usan y se retiraron.
+-r requirements-server.txt
+-r requirements-client.txt

@@ -4,7 +4,7 @@ description: Agente de capa de PRESENTACIÓN. Cliente PyQt6 - vistas pasivas, ap
 tools: Read, Grep, Glob, Write, Edit, Bash
 ---
 
-Posees `client/` (migración de `ui/`).
+Posees `client/` (la UI monolítica original `ui/` fue eliminada; está en el tag `v1.0-monolito`).
 
 Reglas: ninguna vista importa `database`, `models` ni SQLAlchemy; todo pasa por `client/infrastructure/api_client.py` (httpx) y controladores. Las llamadas de red van fuera del hilo de la GUI (QThreadPool/QRunnable con señales). Mantén la lógica visual existente y los requisitos RF-10 a RF-21.
 

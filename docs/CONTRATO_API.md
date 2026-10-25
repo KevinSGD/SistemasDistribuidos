@@ -1,4 +1,4 @@
-# Contrato API — InventarioApp (borrador para aprobación)
+# Contrato API — InventarioApp (versión implementada)
 
 Base: `http://<host>:8000/api/v1`. JSON UTF-8. Auth: `Authorization: Bearer <JWT>` salvo `/auth/login` y `/health`.
 
@@ -79,6 +79,6 @@ Claves nuevas de sesión: `inactividad_segundos` (def. **180**, rango 30–3600)
 | `config_cambiada` | `{claves:[...]}` | todos |
 | `sesion_cerrada` | `{motivo}` | el usuario afectado |
 
-`stock_actualizado` se publica al crear, vender, dar de baja y al editar CUALQUIER campo de un producto (precio_base, stock_maximo, fecha_vencimiento, nombre, categoria, stock, activo), no solo stock/activo: es la señal de "vuelve a pedir este producto" y los clientes refrescan su lista al recibirlo. Al desactivar un producto con descuento vigente se publica además `descuento_cambiado` con `porcentaje: 0`. No se añadió un evento nuevo. `sesion_cerrada.motivo`: `logout`, `inactividad`, `usuario_desactivado`, `password_cambiada`, `token_invalido`. Un `sesion_cerrada` solo cierra el socket si ESA sesión ya no es válida (cerrar otra sesión del mismo usuario no lo afecta).
+`stock_actualizado` se publica al crear, vender, dar de baja y al editar CUALQUIER campo de un producto (precio_base, stock_maximo, fecha_vencimiento, nombre, categoria, stock, activo), no solo stock/activo: es la señal de "vuelve a pedir este producto" y los clientes refrescan su lista al recibirlo. Al desactivar un producto con descuento vigente se publica además `descuento_cambiado` con `porcentaje: 0`. No se añadió un evento nuevo. `sesion_cerrada.motivo`: `logout`, `inactividad`, `usuario_desactivado`, `password_cambiada`, `rol_cambiado`, `usuario_inactivo`, `revocada` (valor por defecto de `cerrar_sesiones_de`), `token_invalido`. Un `sesion_cerrada` solo cierra el socket si ESA sesión ya no es válida (cerrar otra sesión del mismo usuario no lo afecta).
 
 Cierre con código 4401 (tras aceptar la conexión) si el token es inválido o la sesión caducó. El servidor revalida cada ~5 s los sockets abiertos (sin renovar actividad) y cierra con 4401, tras enviar `sesion_cerrada`, si caducó por inactividad o por `sesion_maxima_minutos`. Si el cliente pierde el socket, reconecta con backoff y mientras tanto usa polling cada 60 s.
