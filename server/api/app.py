@@ -15,7 +15,7 @@ from starlette.concurrency import run_in_threadpool
 from server.infrastructure.db.engine import (
     crear_engine, crear_esquema, crear_session_factory, sesion,
 )
-from server.infrastructure.db.seed import sembrar_configuracion
+from server.infrastructure.db.seed import normalizar_vencimientos, sembrar_configuracion
 from server.security.bootstrap import asegurar_usuarios_iniciales
 from server.security.rutas import ENV_DATA_DIR
 
@@ -52,6 +52,7 @@ def crear_app(engine_o_ruta: Engine | str | Path | None = None, iniciar_schedule
         crear_esquema(engine)
         with sesion(factory) as s:
             sembrar_configuracion(s)
+            normalizar_vencimientos(s)
             asegurar_usuarios_iniciales(s, _directorio_credenciales(engine))
 
     @asynccontextmanager

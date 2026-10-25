@@ -783,3 +783,101 @@ def test_error_de_campo_se_limpia_al_corregirlo(win, espera):
     assert dlg.texto_error_campo("nombre") == "" and dlg.nombre.property("error") == "false"
     assert dlg.texto_error_campo("precio_base")                 # los demas siguen hasta corregirse
     dlg.btn_cancelar.click()
+
+
+# ---------------------------------------------------------------------------------------------
+# vencimiento "sin hora" y reactivacion
+# ---------------------------------------------------------------------------------------------
+def test_dialogo_nota_y_sin_falso_cambio_por_normalizacion(win, espera, api_admin):
+    from PyQt6.QtWidgets import QLabel
+    v = ir(win, espera, "inventario")
+    nombre = f"Hoy {uuid.uuid4().hex[:6]}"
+    hoy = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    p = api_admin.crear_producto(ProductoIn(nombre=nombre, precio_base=100, stock=5, stock_maximo=50,
+                                            fecha_vencimiento=hoy))
+    try:
+        # el servidor lo guardo a las 23:59:59 de hoy
+        assert p.fecha_vencimiento.strftime("%H:%M:%S") == "23:59:59"
+        v.recargar()
+        assert espera(lambda: nombre in filas_inventario(v))
+        r = filas_inventario(v)[nombre]
+        assert v.tabla.texto(r, 7) == hoy.date().isoformat()
+        assert "23:59" in v.tabla.item(r, 7).toolTip()
+        assert v.seleccionar(p.id)
+        v.btn_editar.click()
+        dlg = v._dialogo
+        assert any(inv_mod.NOTA_VENCIMIENTO == w.text() for w in dlg.findChildren(QLabel))
+        assert "23:59" in inv_mod.NOTA_VENCIMIENTO
+        dlg.btn_guardar.click()                                 # hoy no es "fecha pasada" y no hay cambios
+        assert dlg.texto_error_campo("fecha_vencimiento") == ""
+        assert "No hay cambios" in dlg.lbl_error.text()
+        dlg.btn_cancelar.click()
+    finally:
+        api_admin.eliminar_producto(p.id)
+
+
+def test_reactivar_producto_inactivo_con_confirmacion(win, espera, confirma, api_admin):
+    v = ir(win, espera, "inventario")
+    nombre = f"Baja {uuid.uuid4().hex[:6]}"
+    p = api_admin.crear_producto(ProductoIn(nombre=nombre, precio_base=100, stock=40, stock_maximo=50))
+    try:
+        api_admin.eliminar_producto(p.id)
+        v.recargar()
+        assert espera(lambda: v.cargada)
+        assert nombre not in filas_inventario(v)
+        v.chk_inactivos.setChecked(True)
+        assert espera(lambda: nombre in filas_inventario(v))
+        r = filas_inventario(v)[nombre]
+        assert v.tabla.texto(r, 8) == "Inactivo"
+        assert v.seleccionar(p.id)
+        assert v.btn_reactivar.isEnabled() and not v.btn_baja.isEnabled()
+        confirma["respuesta"] = False                           # cancelar no reactiva
+        v.btn_reactivar.click()
+        assert confirma["llamadas"] and nombre in confirma["llamadas"][-1][1]
+        assert not any(x.id == p.id for x in api_admin.listar_productos())
+        confirma["respuesta"] = True
+        v.btn_reactivar.click()
+        assert espera(lambda: any(x.id == p.id for x in api_admin.listar_productos()))
+        assert espera(lambda: any("reactivado" in t.text() for t in Toast.activos(win)))
+        assert espera(lambda: v.tabla.texto(filas_inventario(v)[nombre], 8) == "Normal")
+        v.chk_inactivos.setChecked(False)
+        assert espera(lambda: nombre in filas_inventario(v))
+    finally:
+        api_admin.eliminar_producto(p.id)
+
+
+def test_reactivar_vencido_pide_fecha_nueva(win, espera, api_admin):
+    v = ir(win, espera, "inventario")
+    nombre = f"Vencido {uuid.uuid4().hex[:6]}"
+    ayer = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=2)
+    p = api_admin.crear_producto(ProductoIn(nombre=nombre, precio_base=100, stock=5, stock_maximo=50,
+                                            fecha_vencimiento=ayer, activo=False))
+    try:
+        v.chk_inactivos.setChecked(True)
+        assert espera(lambda: nombre in filas_inventario(v))
+        assert v.seleccionar(p.id)
+        v.btn_reactivar.click()
+        dlg = v._dialogo
+        assert dlg is not None and dlg.windowTitle() == "Reactivar producto"
+        dlg.vencimiento.setDate(QDate.currentDate().addDays(-1))   # sigue vencida: no sale
+        dlg.btn_guardar.click()
+        assert "pasó" in dlg.texto_error_campo("fecha_vencimiento")
+        assert not any(x.id == p.id for x in api_admin.listar_productos())
+        dlg.vencimiento.setDate(QDate.currentDate().addDays(10))
+        dlg.btn_guardar.click()
+        assert espera(lambda: any(x.id == p.id for x in api_admin.listar_productos()))
+        nuevo = next(x for x in api_admin.listar_productos() if x.id == p.id)
+        assert nuevo.activo and nuevo.fecha_vencimiento.date() == (datetime.now() + timedelta(days=10)).date()
+        assert espera(lambda: v._dialogo is None)
+        v.chk_inactivos.setChecked(False)
+    finally:
+        api_admin.eliminar_producto(p.id)
+
+
+def test_exportacion_muestra_fecha_y_hora_solo_si_no_es_cierre_de_dia():
+    from client.presentation.views._exportar import FilaInventario, _venc
+    base = dict(id=1, nombre="x", categoria="c", precio_base=1, precio_final=1, descuento=0,
+                stock=1, stock_maximo=2, nivel="normal")
+    assert _venc(FilaInventario(vencimiento="2030-01-05", hora_venc="23:59", **base)) == "2030-01-05"
+    assert _venc(FilaInventario(vencimiento="2030-01-05", hora_venc="15:30", **base)) == "2030-01-05 15:30"
+    assert _venc(FilaInventario(vencimiento=None, **base)) == "Sin vencimiento"

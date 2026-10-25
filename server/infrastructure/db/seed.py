@@ -1,10 +1,12 @@
 """Valores por defecto de la configuracion. No siembra usuarios (lo hace seguridad)."""
 from __future__ import annotations
 
+from datetime import datetime, time
+
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from .orm import ConfiguracionORM
+from .orm import ConfiguracionORM, ProductoORM
 
 CONFIG_POR_DEFECTO: dict[str, str] = {
     "moneda": "$",
@@ -41,3 +43,21 @@ def sembrar_configuracion(sesion: Session) -> int:
     sesion.add_all(nuevas)
     sesion.flush()
     return len(nuevas)
+
+
+def normalizar_vencimientos(sesion: Session, ahora: datetime | None = None) -> int:
+    """Pasa a 23:59:59 los productos ACTIVOS con vencimiento a las 00:00:00 exactas cuya fecha
+    es hoy o futura (una fecha sin hora vale hasta el final del dia). No toca fechas pasadas
+    ni horas explicitas. Idempotente. Devuelve cuantos modifico."""
+    ahora = ahora or datetime.now()
+    hoy = ahora.date()
+    n = 0
+    q = select(ProductoORM).where(ProductoORM.activo.is_(True),
+                                  ProductoORM.fecha_vencimiento.is_not(None))
+    for p in sesion.scalars(q):
+        f = p.fecha_vencimiento
+        if f.time() == time(0, 0, 0) and f.date() >= hoy:
+            p.fecha_vencimiento = datetime.combine(f.date(), time(23, 59, 59))
+            n += 1
+    sesion.flush()
+    return n

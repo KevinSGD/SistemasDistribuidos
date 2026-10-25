@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import math
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, time
+from typing import Callable
 
 from server.domain.entities import ProductoDominio
 from server.domain.errors import NoEncontrado
@@ -29,15 +30,30 @@ def _entero(campo: str, v, minimo: int = 0) -> int:
     return int(f)
 
 
+FIN_DE_DIA = time(23, 59, 59)
+
+
+def fin_de_dia(d: datetime | None) -> datetime | None:
+    """Criterio de producto: una fecha de vencimiento SIN hora (00:00:00 exactas) significa
+    "valido hasta el FINAL de ese dia" (23:59:59). Las fechas con hora explicita distinta de
+    00:00:00 se respetan tal cual. Idempotente."""
+    if d is not None and d.time() == time(0, 0, 0):
+        return datetime.combine(d.date(), FIN_DE_DIA)
+    return d
+
+
 def _fecha(v) -> datetime | None:
+    """Parsea fecha_vencimiento (datetime o ISO 8601) sin zona horaria y aplica `fin_de_dia`:
+    medianoche exacta se guarda como 23:59:59 del mismo dia (fuente unica de verdad del
+    servidor, valida para cualquier cliente)."""
     if v is None or v == "":
         return None
     if isinstance(v, datetime):
-        return v.replace(tzinfo=None) if v.tzinfo else v
+        return fin_de_dia(v.replace(tzinfo=None) if v.tzinfo else v)
     if isinstance(v, str):
         try:
             d = datetime.fromisoformat(v)
-            return d.replace(tzinfo=None) if d.tzinfo else d
+            return fin_de_dia(d.replace(tzinfo=None) if d.tzinfo else d)
         except ValueError:
             pass
     raise ErrorValidacion("fecha_vencimiento inválida (use ISO 8601)", {"campo": "fecha_vencimiento"})
@@ -77,9 +93,11 @@ def _normalizar(datos: dict) -> dict:
 
 
 class InventarioService:
-    def __init__(self, sesion_factory, bus: EventBus | None = None):
+    def __init__(self, sesion_factory, bus: EventBus | None = None,
+                 reloj: Callable[[], datetime] = datetime.now):
         self._factory = sesion_factory
         self._bus = bus
+        self._reloj = reloj
 
     def _publicar_stock(self, p: ProductoDominio) -> None:
         if self._bus is not None:
@@ -126,6 +144,13 @@ class InventarioService:
             if actual is None:
                 raise NoEncontrado("Producto no encontrado", {"producto_id": id})
             nuevo = replace(actual, **v)
+            # datos antiguos guardados a medianoche: se normalizan al tocar el producto
+            nuevo = replace(nuevo, fecha_vencimiento=fin_de_dia(nuevo.fecha_vencimiento))
+            if (nuevo.activo and not actual.activo and nuevo.fecha_vencimiento is not None
+                    and self._reloj() > nuevo.fecha_vencimiento):
+                raise ErrorValidacion(
+                    "No se puede reactivar un producto vencido; indica una nueva fecha de vencimiento",
+                    {"campo": "fecha_vencimiento"})
             guardado = repo.actualizar(nuevo)
             desc_quitado = False
             if not nuevo.activo:

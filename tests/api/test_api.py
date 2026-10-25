@@ -370,3 +370,58 @@ def test_scheduler_arranca_y_se_detiene(tmp_path):
         sch = app.state.servicios.scheduler
         assert sch.activo
     assert not sch.activo
+
+
+# -- vencimiento "sin hora" = valido hasta el final del dia (regresion) ----------------------------
+def test_vence_hoy_a_medianoche_via_http(client, admin, comprador, crear_producto):
+    h = admin[0]
+    hoy = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    p = crear_producto(nombre="DeHoy", stock=5, fecha_vencimiento=hoy.isoformat())
+    assert p["fecha_vencimiento"].startswith(hoy.date().isoformat() + "T23:59:59")
+    ayer = crear_producto(nombre="Ayer", stock=5,
+                          fecha_vencimiento=(hoy - timedelta(days=1)).isoformat())
+    hp = crear_producto(nombre="HoraPasada", stock=5,
+                        fecha_vencimiento=(datetime.now() - timedelta(minutes=5)).isoformat())
+    of = client.get(f"{B}/ofertas", headers=comprador[0]).json()
+    assert [o["nombre"] for o in of] == ["DeHoy"]
+    assert of[0]["nivel"] == "critico" and of[0]["descuento"] == 50.0 and "Vence hoy" in of[0]["motivo"]
+    esc = client.post(f"{B}/riesgo/escaneo", headers=h).json()
+    assert sorted(esc["retirados"]) == ["Ayer", "HoraPasada"]
+    activos = [x["nombre"] for x in client.get(f"{B}/productos", headers=h).json()]
+    assert activos == ["DeHoy"]
+    r = client.post(f"{B}/compras", json=compra(p["id"], 1, 1000), headers=comprador[0])
+    assert r.status_code == 201, r.text
+    for malo in (ayer, hp):
+        assert client.post(f"{B}/compras", json=compra(malo["id"]), headers=comprador[0]).status_code >= 400
+
+
+def test_reactivar_via_http(client, admin, crear_producto):
+    h = admin[0]
+    hoy = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    v = crear_producto(nombre="Viejo", fecha_vencimiento=(hoy - timedelta(days=2)).isoformat(), activo=False)
+    assert client.put(f"{B}/productos/{v['id']}", json={"activo": True}, headers=h).status_code == 422
+    nueva = (hoy + timedelta(days=3)).isoformat()
+    r = client.put(f"{B}/productos/{v['id']}", json={"activo": True, "fecha_vencimiento": nueva}, headers=h)
+    assert r.status_code == 200 and r.json()["activo"] is True
+    assert r.json()["fecha_vencimiento"].endswith("T23:59:59")
+
+
+def test_arranque_normaliza_vencimientos_guardados_a_medianoche(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from server.api.app import crear_app
+    from server.domain.entities import ProductoDominio
+    from server.infrastructure.db.engine import sesion
+    from server.infrastructure.db.repos import ProductoRepo
+
+    ruta = tmp_path / "arranque.db"
+    hoy = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    app = crear_app(ruta, iniciar_scheduler=False)
+    with TestClient(app):
+        with sesion(app.state.servicios.factory) as s:
+            pid = ProductoRepo(s).crear(ProductoDominio(
+                None, "Viejo dato", "G", 5.0, 3, 10, hoy, True)).id
+    app2 = crear_app(ruta, iniciar_scheduler=False)
+    with TestClient(app2):
+        with sesion(app2.state.servicios.factory) as s:
+            assert ProductoRepo(s).obtener(pid).fecha_vencimiento == hoy.replace(hour=23, minute=59, second=59)

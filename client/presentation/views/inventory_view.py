@@ -18,12 +18,17 @@ from shared.schemas import ProductoIn, ProductoUpdate
 from ..styles.theme import COLOR_NIVEL, COLORES, fmt_moneda
 from ..widgets import EstadoVacio, TablaEstandar
 from . import _comunes as c
-from ._exportar import COLUMNAS, ETIQUETA_NIVEL, FilaInventario, exportar_excel, exportar_pdf
+from ._exportar import (
+    COLUMNAS, ETIQUETA_NIVEL, FilaInventario, _venc, exportar_excel, exportar_pdf,
+)
 
 TABLA, VACIO, SIN_RESULTADOS, ERROR = 0, 1, 2, 3
 TODAS = "Todas las categorías"
 _RANGO_NIVEL = {"critico": 3, "alto": 2, "medio": 1, "normal": 0}
 COL_ID, COL_NOMBRE, COL_CATEGORIA, COL_BASE, COL_FINAL, COL_STOCK, COL_MAX, COL_VENC, COL_RIESGO = range(9)
+
+
+NOTA_VENCIMIENTO = "El producto se puede vender hasta las 23:59 de esa fecha."
 
 
 def _numero(texto: str, entero: bool = False) -> float | int | None:
@@ -44,10 +49,14 @@ def _numero(texto: str, entero: bool = False) -> float | int | None:
 # ---------------------------------------------------------------------------
 class ProductoDialog(c.DialogoFormulario):
     def __init__(self, app_ctx, producto: FilaInventario | None = None,
-                 categorias: list[str] | None = None, parent: QWidget | None = None):
-        super().__init__(app_ctx, "Editar producto" if producto else "Agregar producto",
-                         "Guardar cambios" if producto else "Crear producto", parent)
+                 categorias: list[str] | None = None, parent: QWidget | None = None,
+                 reactivar: bool = False):
+        super().__init__(app_ctx, "Reactivar producto" if reactivar else
+                         "Editar producto" if producto else "Agregar producto",
+                         "Reactivar" if reactivar else "Guardar cambios" if producto else "Crear producto",
+                         parent)
         self._producto = producto
+        self._reactivar = reactivar and producto is not None
         self.nombre = QLineEdit(self)
         self.nombre.setPlaceholderText("Ej. Leche entera 1 L")
         self.nombre.setMaxLength(100)
@@ -82,7 +91,8 @@ class ProductoDialog(c.DialogoFormulario):
         self._columna(col_a, "stock", "Stock *", self.stock)
         self._columna(col_b, "stock_maximo", "Stock máximo *", self.stock_max)
         self.contenido.addWidget(self.tiene_venc)
-        self.agregar_campo("fecha_vencimiento", "Fecha de vencimiento", self.vencimiento)
+        self.agregar_campo("fecha_vencimiento", "Fecha de vencimiento", self.vencimiento,
+                           ayuda=NOTA_VENCIMIENTO)
 
         if producto:
             self.nombre.setText(producto.nombre)
@@ -98,6 +108,11 @@ class ProductoDialog(c.DialogoFormulario):
                 self.tiene_venc.setChecked(True)
                 d = date.fromisoformat(producto.vencimiento)
                 self.vencimiento.setDate(QDate(d.year, d.month, d.day))
+            if self._reactivar:
+                # un producto vencido solo se reactiva con una fecha nueva
+                self.tiene_venc.setChecked(True)
+                if date.fromisoformat(producto.vencimiento or "2000-01-01") < date.today():
+                    self.vencimiento.setDate(QDate.currentDate().addDays(30))
         else:
             self.categoria.setCurrentText("General")
 
@@ -149,7 +164,8 @@ class ProductoDialog(c.DialogoFormulario):
             ok = False
         fecha = self._fecha()
         original = self._producto.vencimiento if self._producto else None
-        if fecha is not None and fecha < date.today() and fecha.isoformat() != original:
+        if (fecha is not None and fecha < date.today()
+                and (self._reactivar or fecha.isoformat() != original)):
             self.error_campo("fecha_vencimiento", "La fecha ya pasó; elige una fecha futura")
             ok = False
         if not ok:
@@ -160,7 +176,7 @@ class ProductoDialog(c.DialogoFormulario):
             return ProductoIn(nombre=nombre, categoria=categoria, precio_base=precio, stock=stock,
                               stock_maximo=maximo, fecha_vencimiento=venc)
         p = self._producto
-        cambios: dict = {}
+        cambios: dict = {"activo": True} if self._reactivar else {}
         if nombre != p.nombre:
             cambios["nombre"] = nombre
         if categoria != p.categoria:
@@ -171,6 +187,7 @@ class ProductoDialog(c.DialogoFormulario):
             cambios["stock"] = stock
         if maximo != p.stock_maximo:
             cambios["stock_maximo"] = maximo
+        # se compara solo la FECHA: el servidor guarda 23:59:59 y el cliente envia medianoche
         if (fecha.isoformat() if fecha else None) != p.vencimiento:
             cambios["fecha_vencimiento"] = venc
         if not cambios:
@@ -223,10 +240,14 @@ class InventoryView(c.VistaBase):
         self.filtro_categoria.setMinimumWidth(190)
         self.filtro_categoria.addItem(TODAS)
         self.filtro_categoria.currentIndexChanged.connect(self._aplicar_filtros)
+        self.chk_inactivos = QCheckBox("Mostrar inactivos", self)
+        self.chk_inactivos.setToolTip("Incluye los productos dados de baja o retirados por vencimiento")
+        self.chk_inactivos.toggled.connect(lambda _=False: self.recargar())
         self.lbl_conteo = QLabel("", self)
         self.lbl_conteo.setStyleSheet(f"color: {COLORES['texto_suave']}; font-size: 12px;")
         filtros.addWidget(self.busqueda, 2)
         filtros.addWidget(self.filtro_categoria, 1)
+        filtros.addWidget(self.chk_inactivos)
         filtros.addStretch(1)
         filtros.addWidget(self.lbl_conteo)
         lay.addLayout(filtros)
@@ -294,16 +315,19 @@ class InventoryView(c.VistaBase):
         self.btn_editar = QPushButton("Editar", self)
         self.btn_baja = QPushButton("Dar de baja", self)
         self.btn_baja.setProperty("variant", "danger")
+        self.btn_reactivar = QPushButton("Reactivar", self)
         self.btn_actualizar = QPushButton("Actualizar", self)
         self.btn_excel = QPushButton("Exportar Excel", self)
         self.btn_pdf = QPushButton("Exportar PDF", self)
         self.btn_editar.clicked.connect(self.editar)
         self.btn_baja.clicked.connect(self.dar_de_baja)
+        self.btn_reactivar.clicked.connect(self.reactivar)
         self.btn_actualizar.clicked.connect(lambda: self.recargar())
         self.btn_excel.clicked.connect(lambda: self.exportar("xlsx"))
         self.btn_pdf.clicked.connect(lambda: self.exportar("pdf"))
         pie.addWidget(self.btn_editar)
         pie.addWidget(self.btn_baja)
+        pie.addWidget(self.btn_reactivar)
         pie.addStretch(1)
         pie.addWidget(self.btn_actualizar)
         pie.addWidget(self.btn_excel)
@@ -316,9 +340,12 @@ class InventoryView(c.VistaBase):
         api = self.ctx.api
         if api is None:
             return
+        todos = self.chk_inactivos.isChecked()
 
         def trabajo():
             productos = api.listar_productos(True)
+            if todos:   # el servidor no admite 'todos': se piden activos e inactivos por separado
+                productos = sorted(productos + api.listar_productos(False), key=lambda x: x.nombre)
             alertas = api.alertas_riesgo()
             try:
                 pub = api.config_publica()
@@ -328,13 +355,15 @@ class InventoryView(c.VistaBase):
             riesgo = {i.producto_id: i for g in (alertas.critico, alertas.alto, alertas.medio) for i in g}
             filas = []
             for p in productos:
-                r = riesgo.get(p.id)
+                r = riesgo.get(p.id) if p.activo else None
+                fv = p.fecha_vencimiento
                 filas.append(FilaInventario(
                     p.id, p.nombre, p.categoria, p.precio_base,
                     r.precio_final if r else p.precio_base, r.descuento if r else 0.0,
                     p.stock, p.stock_maximo,
-                    p.fecha_vencimiento.date().isoformat() if p.fecha_vencimiento else None,
-                    r.nivel if r else "normal"))
+                    fv.date().isoformat() if fv else None,
+                    r.nivel if r else "normal" if p.activo else "inactivo",
+                    p.activo, fv.strftime("%H:%M") if fv else None))
             return filas, moneda, negocio
 
         self.consultar(trabajo, self._recibir, lambda e: self._error(e, silencioso), silencioso)
@@ -378,7 +407,7 @@ class InventoryView(c.VistaBase):
         sel_id = sel.id if sel else None
         m = self._moneda
         filas = [[f.id, f.nombre, f.categoria, f.precio_base, f.precio_final, f.stock, f.stock_maximo,
-                  f.vencimiento or "Sin vencimiento", _RANGO_NIVEL.get(f.nivel, 0)]
+                  _venc(f), _RANGO_NIVEL.get(f.nivel, 0)]
                  for f in self._visibles]
         self.tabla.blockSignals(True)
         self.tabla.set_filas(filas, formateadores={
@@ -390,6 +419,11 @@ class InventoryView(c.VistaBase):
             f = por_id[int(self.tabla.texto(r, COL_ID))]
             txt, fondo = COLOR_NIVEL.get(f.nivel, COLOR_NIVEL["normal"])
             it = self.tabla.item(r, COL_RIESGO)
+            if not f.activo:
+                it.setText(ETIQUETA_NIVEL["inactivo"])
+                txt, fondo = COLORES["texto_suave"], COLORES["superficie"]
+                for col in range(self.tabla.columnCount()):
+                    self.tabla.item(r, col).setForeground(QColor(COLORES["texto_suave"]))
             it.setForeground(QColor(txt))
             it.setBackground(QColor(fondo))
             it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -400,7 +434,10 @@ class InventoryView(c.VistaBase):
                 p = self.tabla.item(r, COL_FINAL)
                 p.setForeground(QColor(COLORES["exito_texto"]))
                 p.setToolTip(f"Descuento de {f.descuento:g}% sobre {fmt_moneda(f.precio_base, m)}")
-            self.tabla.item(r, COL_VENC).setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            cv = self.tabla.item(r, COL_VENC)
+            cv.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            if f.vencimiento:
+                cv.setToolTip(f"Se puede vender hasta las {f.hora_venc or '23:59'} de esa fecha")
             if f.id == sel_id:
                 fila_sel = r
         for col in (COL_VENC, COL_RIESGO):
@@ -436,9 +473,11 @@ class InventoryView(c.VistaBase):
         return False
 
     def _actualizar_botones(self) -> None:
-        hay = self.producto_seleccionado() is not None
+        sel = self.producto_seleccionado()
+        hay = sel is not None
         self.btn_editar.setEnabled(hay)
-        self.btn_baja.setEnabled(hay)
+        self.btn_baja.setEnabled(hay and sel.activo)
+        self.btn_reactivar.setEnabled(hay and not sel.activo)
         hay_datos = bool(self._visibles) and not self._exportando
         self.btn_excel.setEnabled(hay_datos)
         self.btn_pdf.setEnabled(hay_datos)
@@ -484,6 +523,34 @@ class InventoryView(c.VistaBase):
 
     def _baja_error(self, exc: BaseException) -> None:
         self.toast(c.mensaje_api(exc), "error", 6000)
+        self.recargar(silencioso=True)
+
+    # -- reactivar (RNF-04) ----------------------------------------------------------------------------------
+    def reactivar(self) -> None:
+        """Devuelve un producto inactivo al inventario (PUT activo=True). Si su fecha de vencimiento ya
+        paso se pide una nueva; el servidor rechaza reactivar algo realmente vencido."""
+        p = self.producto_seleccionado()
+        api = self.ctx.api
+        if p is None or api is None or p.activo:
+            return
+        if p.vencimiento and date.fromisoformat(p.vencimiento) < date.today():
+            dlg = ProductoDialog(self.ctx, p, sorted({f.categoria for f in self._filas}),
+                                 self.window(), reactivar=True)
+            self._dialogo = dlg
+            dlg.guardado.connect(lambda _p: self._reactivado(p))
+            dlg.finished.connect(lambda _=0: setattr(self, "_dialogo", None))
+            dlg.open()
+            return
+        if not c.confirmar(
+                self.window(), "Reactivar producto",
+                f"¿Reactivar «{p.nombre}»?\n\nVolverá a mostrarse en el inventario y a venderse.",
+                "Reactivar"):
+            return
+        self.ctx.ejecutar(lambda: api.actualizar_producto(p.id, ProductoUpdate(activo=True)),
+                          lambda _: self._reactivado(p), self._baja_error, self)
+
+    def _reactivado(self, p: FilaInventario) -> None:
+        self.toast(f"Producto «{p.nombre}» reactivado", "exito")
         self.recargar(silencioso=True)
 
     # -- exportacion ------------------------------------------------------------------------------------------

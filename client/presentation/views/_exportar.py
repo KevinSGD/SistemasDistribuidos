@@ -16,7 +16,8 @@ from ..styles.theme import COLOR_NIVEL, fmt_moneda
 
 COLUMNAS = ["ID", "Nombre", "Categoría", "Precio base", "Precio con descuento",
             "Stock", "Stock máx.", "Vencimiento", "Riesgo"]
-ETIQUETA_NIVEL = {"critico": "Crítico", "alto": "Alto", "medio": "Medio", "normal": "Normal"}
+ETIQUETA_NIVEL = {"critico": "Crítico", "alto": "Alto", "medio": "Medio", "normal": "Normal",
+                  "inactivo": "Inactivo"}
 
 
 @dataclass(frozen=True)
@@ -29,8 +30,10 @@ class FilaInventario:
     descuento: float
     stock: int
     stock_maximo: int
-    vencimiento: str | None        # 'YYYY-MM-DD' o None
-    nivel: str
+    vencimiento: str | None        # 'YYYY-MM-DD' o None (solo la fecha: vale hasta el final del dia)
+    nivel: str                     # critico/alto/medio/normal, o 'inactivo' (dado de baja)
+    activo: bool = True
+    hora_venc: str | None = None   # 'HH:MM' (el servidor guarda 23:59 si no se indico hora)
 
 
 def carpeta_reportes() -> Path:
@@ -47,7 +50,12 @@ def nombre_reporte(extension: str, ahora: datetime | None = None) -> str:
 
 
 def _venc(f: FilaInventario) -> str:
-    return f.vencimiento or "Sin vencimiento"
+    """Fecha de vencimiento; la hora solo se anota si no es el cierre normal del dia (23:59)."""
+    if not f.vencimiento:
+        return "Sin vencimiento"
+    if f.hora_venc and f.hora_venc != "23:59":
+        return f"{f.vencimiento} {f.hora_venc}"
+    return f.vencimiento
 
 
 def exportar_excel(filas: list[FilaInventario], moneda: str, negocio: str,
