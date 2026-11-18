@@ -74,7 +74,16 @@ Arranca el servidor, carga unos 25 productos de ejemplo que cubren todos los niv
 
 ## Credenciales de demo
 
-No están en el repositorio ni en el código. Hay dos usuarios iniciales, `admin` (rol administrador) y `comprador` (rol comprador):
+Hay dos usuarios iniciales, `admin` (rol administrador) y `comprador` (rol comprador). Las contraseñas del código fuente no existen: se generan al instalar. Las de esta instalación de demostración son:
+
+| Usuario | Rol | Contraseña |
+|---|---|---|
+| `admin` | Administrador | `iJzVoypp5qX2dgof` |
+| `comprador` | Comprador | `4TlRgzqy9P-YpPu1` |
+
+Son válidas solo para la base de datos actual de esta máquina; en otra instalación se generan otras (ver abajo). Cámbielas antes de exponer el servidor fuera de la demo.
+
+Cómo se generan:
 
 - `deploy/wsl/setup.sh` genera una contraseña aleatoria para cada uno la primera vez, las muestra una vez y las guarda en `~/.inventario/credenciales.env` (permisos 600) dentro de WSL. `demo.ps1` las vuelve a mostrar leyendo ese archivo.
 - Solo se aplican al crear la base de datos. Si la base ya existía, borre los datos de demo (DESPLIEGUE.md, sección 7).
@@ -120,14 +129,4 @@ contexto.md  documento del proyecto (requerimientos, alcance, diseño)
 
 Capturas reales del cliente Windows conectado al servidor Linux, en [docs/capturas](docs/capturas): login, dashboard, inventario, configuración de seguridad de sesión, usuarios, catálogo y carrito del comprador, pago, factura, aviso de inactividad y cierre por inactividad (archivos `01_` a `11_`).
 
-## Créditos
 
-Universidad Manuela Beltrán, Facultad de Ingeniería, Colombia, 2026. Asignatura: Ingeniería de Software - Sistemas Distribuidos.
-
-| Integrante | Rol en el proyecto |
-|---|---|
-| Santiago Forero Díaz | Documentación del proyecto (análisis, planteamiento y organización de los apartados) |
-| Johan Sebastián Martínez Rodríguez | Backend (lógica del sistema, datos y mecanismo interno) |
-| Bryan Andrés Puentes Vargas | Frontend (diseño e implementación de la interfaz gráfica) |
-
-Docente: Juan José Osorio Tabares.

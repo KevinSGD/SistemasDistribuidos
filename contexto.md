@@ -1,20 +1,3 @@
-```
-Guía del proyecto
-```
-Sistema inteligente basado en inteligencia artificial para optimizar descuentos dinámicos en
-alimentos perecederos
-Santiago Forero Díaz
-santiagoforerod.@academia.umb.edu.co
-Johan Sebastián Martínez Rodríguez
-johanmartinez.sr@academia.umb.edu.co
-Bryan Andrés Puentes Vargas
-bryanpuentes.av@academia.umb.edu.co
-Universidad Manuela Beltrán
-Docente: Juan José Osorio Tabares
-Ingeniería de Software - Sistemas Distribuidos
-Facultad de Ingeniería
-Colombia
-2026
 
 
 ## Tabla De Contenido
@@ -233,18 +216,11 @@ contraseñas de forma que no puedan leerse.
 
 ## Equipo De Trabajo
 
-El equipo de trabajo del proyecto fue llevado a cabo por tres miembros que
-desarrollan cada uno de ellos áreas específicas para cumplir con una buena construcción de
-la propuesta de solución, Santiago Forero se encargó de la construcción y estructuración de
-la documentación del proyecto la cual incluye el análisis, planteamiento y organización de
-los diferentes apartados académicos y técnicos, Johan Martínez es el encargado de construir
-el código backend, implementa la lógica del sistema, maneja los datos y el mecanismo
-interno de la aplicación, mientras que Bryan Puentes es el encargado de construir el
-frontend el encargado de diseñar e implementar la interfaz gráfica de la aplicación con el
-fin de cumplir con el objetivo de que la interacción del usuario con la aplicación sea clara y
-funcional la distribución de los roles permite que haya un trabajo organizado y colaborativo
-para garantizar el cumplimiento de los objetivos del proyecto propuestos por el equipo de
-trabajo.
+El equipo de trabajo del proyecto distribuyó las responsabilidades en áreas específicas
+para garantizar una construcción organizada y colaborativa. Las tareas abarcaron la
+documentación, el desarrollo del backend y la implementación del frontend, incluyendo
+el análisis del proyecto, la lógica del sistema, el manejo de datos y el diseño de la
+interfaz gráfica.
 
 
 ## Problema o necesidad
