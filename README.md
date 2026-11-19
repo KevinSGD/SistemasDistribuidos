@@ -90,7 +90,7 @@ Cómo se generan:
 - Si el servidor arranca sin variables `INVENTARIO_ADMIN_PASSWORD` / `INVENTARIO_COMPRADOR_PASSWORD`, genera contraseñas y las escribe en `credenciales_iniciales.txt` en su directorio de datos.
 - Cámbielas desde la vista Usuarios (el administrador) y no las publique.
 
-## Pruebas
+## Testing
 
 ```powershell
 # Suite normal (dominio, aplicación, infraestructura, seguridad, API y cliente; los e2e quedan deseleccionados)
